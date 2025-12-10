@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import Card, { CardContent } from './ui/Card';
 import { Transaction, TransactionType, Category, BankAccount } from '../types';
@@ -9,16 +8,20 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { useData } from '../lib/DataContext';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
+// Helper to access env vars safely in various environments
+const API_KEY = process.env.API_KEY || '';
+
 // --- Sub-components ---
 
 interface TransactionFormModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSave: (data: Omit<Transaction, 'id'>, id?: string) => void;
+  onDelete?: (id: string) => void;
   initialData: Transaction | null;
 }
 
-const TransactionFormModal: React.FC<TransactionFormModalProps> = ({ isOpen, onClose, onSave, initialData }) => {
+const TransactionFormModal: React.FC<TransactionFormModalProps> = ({ isOpen, onClose, onSave, onDelete, initialData }) => {
     const { categories, accounts, trucks } = useData();
     
     // Form State
@@ -82,6 +85,15 @@ const TransactionFormModal: React.FC<TransactionFormModalProps> = ({ isOpen, onC
         };
 
         onSave(data, initialData?.id);
+    };
+
+    const handleDelete = () => {
+        if (initialData && onDelete) {
+            // Confirm deletion via parent handler or internal confirm
+            if (window.confirm("Are you sure you want to delete this transaction?")) {
+                onDelete(initialData.id);
+            }
+        }
     };
 
     const handleAddReceipt = () => {
@@ -259,9 +271,18 @@ const TransactionFormModal: React.FC<TransactionFormModalProps> = ({ isOpen, onC
                     </div>
                 </div>
 
-                <div className="d-flex justify-content-end gap-2 mt-4 pt-3 border-top">
-                    <button type="button" onClick={onClose} className="btn btn-light border">Cancel</button>
-                    <button type="submit" className="btn btn-primary">Save Transaction</button>
+                <div className="d-flex justify-content-between gap-2 mt-4 pt-3 border-top">
+                    <div>
+                        {initialData && onDelete && (
+                            <button type="button" onClick={handleDelete} className="btn btn-danger bg-opacity-10 text-danger border-0">
+                                Delete
+                            </button>
+                        )}
+                    </div>
+                    <div className="d-flex gap-2">
+                        <button type="button" onClick={onClose} className="btn btn-light border">Cancel</button>
+                        <button type="submit" className="btn btn-primary">Save Transaction</button>
+                    </div>
                 </div>
             </form>
         </Modal>
@@ -285,6 +306,16 @@ const ImportTransactionsModal: React.FC<ImportTransactionsModalProps> = ({ isOpe
     const [fileName, setFileName] = useState<string | null>(null);
     const [progress, setProgress] = useState(0);
 
+    // New state for selected account
+    const [selectedImportAccountId, setSelectedImportAccountId] = useState<string>('');
+
+    // Initialize with first account
+    useEffect(() => {
+        if (isOpen && accounts.length > 0 && !selectedImportAccountId) {
+            setSelectedImportAccountId(accounts[0].id);
+        }
+    }, [isOpen, accounts]);
+
     const reset = () => {
         setInputText('');
         setParsedData([]);
@@ -292,6 +323,8 @@ const ImportTransactionsModal: React.FC<ImportTransactionsModalProps> = ({ isOpe
         setError(null);
         setFileName(null);
         setProgress(0);
+        // Reset to first account
+        if (accounts.length > 0) setSelectedImportAccountId(accounts[0].id);
     };
 
     const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -351,7 +384,7 @@ const ImportTransactionsModal: React.FC<ImportTransactionsModalProps> = ({ isOpe
         }, 300);
 
         try {
-            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+            const ai = new GoogleGenAI({ apiKey: API_KEY });
             
             const prompt = `
             Extract financial transactions from the following bank statement text. 
@@ -423,7 +456,8 @@ const ImportTransactionsModal: React.FC<ImportTransactionsModalProps> = ({ isOpe
                     amount: processedAmount, // Should be positive now
                     type: processedType === 'Income' ? TransactionType.INCOME : TransactionType.EXPENSE,
                     category: matchedCategory,
-                    accountId: accounts[0]?.id || 'unknown',
+                    // Use selected account ID
+                    accountId: selectedImportAccountId || accounts[0]?.id || 'unknown',
                     receipts: []
                 } as Transaction;
             });
@@ -489,6 +523,24 @@ const ImportTransactionsModal: React.FC<ImportTransactionsModalProps> = ({ isOpe
         >
             {step === 'input' ? (
                 <div className="d-flex flex-column gap-3">
+                    
+                    {/* Account Selector */}
+                    <div className="mb-2">
+                        <label className="form-label fw-bold small text-muted">Target Account for Import</label>
+                        <select 
+                            className="form-select"
+                            value={selectedImportAccountId}
+                            onChange={(e) => setSelectedImportAccountId(e.target.value)}
+                        >
+                            {accounts.map(acc => (
+                                <option key={acc.id} value={acc.id}>{acc.name} ({acc.type})</option>
+                            ))}
+                        </select>
+                        <div className="form-text small text-muted">
+                            All imported transactions will be assigned to this account.
+                        </div>
+                    </div>
+
                     {!fileName ? (
                         <div className="p-4 border border-2 border-dashed rounded bg-light text-center position-relative hover-bg-white transition-all">
                             <input 
@@ -671,6 +723,9 @@ const Transactions: React.FC = () => {
 
     // Selection State
     const [selectedIds, setSelectedIds] = useState<string[]>([]);
+    
+    // Delete Confirmation State
+    const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
 
     // Modal States
     const [isFormModalOpen, setIsFormModalOpen] = useState(false);
@@ -748,6 +803,25 @@ const Transactions: React.FC = () => {
         }
     };
 
+    const handleTransactionDelete = async (id: string) => {
+         // 1. Optimistic Update (Local)
+        deleteLocalTransaction(id);
+        setIsFormModalOpen(false);
+        setEditingTransaction(null);
+
+        // 2. Database Delete
+        if (isSupabaseConfigured && supabase) {
+            try {
+                const { error } = await supabase.from('transactions').delete().eq('id', id);
+                if (error) throw error;
+            } catch (e) {
+                console.error("Delete failed", e);
+                alert("Failed to delete transaction from database.");
+                await refreshData(); // Re-fetch to ensure sync
+            }
+        }
+    };
+
     const handleBulkImport = async (newTransactions: Transaction[]) => {
         // Optimistic update for import
         newTransactions.forEach(t => addLocalTransaction(t));
@@ -787,6 +861,12 @@ const Transactions: React.FC = () => {
         setEditingTransaction(null);
         setIsFormModalOpen(true);
     };
+
+    const handleDeleteSingleClick = (id: string) => {
+        if (window.confirm("Are you sure you want to delete this transaction?")) {
+            handleTransactionDelete(id);
+        }
+    }
 
     // Filter AND Sort transactions by date descending
     const filteredTransactions = transactions
@@ -839,35 +919,39 @@ const Transactions: React.FC = () => {
         }
     };
 
-    const handleBatchDelete = async () => {
+    // Open Modal
+    const handleBatchDeleteClick = () => {
         if (selectedIds.length === 0) return;
-        
-        if (!window.confirm(`Are you sure you want to delete ${selectedIds.length} transaction(s)? This cannot be undone.`)) {
-            return;
-        }
+        setIsDeleteModalOpen(true);
+    };
+
+    // Actual Logic
+    const confirmBatchDelete = async () => {
+        setIsDeleteModalOpen(false);
 
         // 1. Optimistic Update (Local)
-        // Use bulk delete for better performance and stability, with fallback if not available
         if (deleteLocalTransactions) {
             deleteLocalTransactions(selectedIds);
         } else {
-            // Fallback for safety if context update failed to apply
             selectedIds.forEach(id => deleteLocalTransaction(id));
         }
+
+        // CRITICAL: Clear selection immediately so UI updates
+        const idsToDelete = [...selectedIds];
+        setSelectedIds([]);
 
         // 2. Database Delete
         if (isSupabaseConfigured && supabase) {
             try {
-                const { error } = await supabase.from('transactions').delete().in('id', selectedIds);
+                const { error } = await supabase.from('transactions').delete().in('id', idsToDelete);
                 if (error) throw error;
             } catch (e) {
                 console.error("Batch delete failed", e);
-                alert("Failed to delete some transactions from the database.");
-                await refreshData(); // Re-fetch to ensure sync
+                // Note: We don't rollback simply here for UX reasons, but we alert.
+                // In a production app, we might want to revert the local state or show a toast.
+                alert("Failed to sync deletion with database. Please refresh.");
             }
         }
-
-        setSelectedIds([]);
     };
     // -----------------------------
 
@@ -925,7 +1009,7 @@ const Transactions: React.FC = () => {
                              {/* Batch Delete Action - Visible only when items selected */}
                              {selectedIds.length > 0 && (
                                 <button 
-                                    onClick={handleBatchDelete} 
+                                    onClick={handleBatchDeleteClick} 
                                     className="btn btn-danger d-flex align-items-center shadow-sm"
                                 >
                                     <Trash2 size={18} className="me-2" />
@@ -1102,6 +1186,13 @@ const Transactions: React.FC = () => {
                                                     >
                                                         <Edit2 size={16} />
                                                     </button>
+                                                    <button 
+                                                        onClick={() => handleDeleteSingleClick(t.id)}
+                                                        className="btn btn-light btn-sm text-danger shadow-sm"
+                                                        title="Delete Transaction"
+                                                    >
+                                                        <Trash2 size={16} />
+                                                    </button>
                                                 </div>
                                             </td>
                                         </tr>
@@ -1120,11 +1211,34 @@ const Transactions: React.FC = () => {
                 </CardContent>
             </Card>
 
+            {/* Delete Confirmation Modal */}
+            <Modal
+                isOpen={isDeleteModalOpen}
+                onClose={() => setIsDeleteModalOpen(false)}
+                title="Confirm Deletion"
+                size="sm"
+            >
+                <div className="text-center">
+                    <div className="text-danger mb-3">
+                        <AlertTriangle size={48} />
+                    </div>
+                    <p className="mb-4">
+                        Are you sure you want to delete <span className="fw-bold">{selectedIds.length}</span> selected transaction(s)?
+                        <br/><span className="text-muted small">This action cannot be undone.</span>
+                    </p>
+                    <div className="d-flex justify-content-center gap-2">
+                        <button className="btn btn-light border" onClick={() => setIsDeleteModalOpen(false)}>Cancel</button>
+                        <button className="btn btn-danger" onClick={confirmBatchDelete}>Delete Permanently</button>
+                    </div>
+                </div>
+            </Modal>
+
             {/* Add/Edit Modal */}
             <TransactionFormModal
                 isOpen={isFormModalOpen}
                 onClose={() => setIsFormModalOpen(false)}
                 onSave={handleSaveTransaction}
+                onDelete={handleTransactionDelete}
                 initialData={editingTransaction}
             />
 
