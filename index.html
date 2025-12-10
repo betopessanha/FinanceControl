@@ -1,0 +1,69 @@
+
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Trucking Co. Accounting</title>
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-T3c6CoIi6uLrA9TneNEoa7RxnatzjcDSCmG1MXxSR1GAsXEV/Dwwykc2MPK8M2HN" crossorigin="anonymous">
+    <!-- Bootstrap Icons (Optional, but useful if we replaced Lucide, strictly speaking we are keeping Lucide for now) -->
+    
+  <script type="importmap">
+{
+  "imports": {
+    "react/": "https://aistudiocdn.com/react@^19.2.1/",
+    "react": "https://aistudiocdn.com/react@^19.2.1",
+    "recharts": "https://aistudiocdn.com/recharts@^3.5.1",
+    "lucide-react": "https://aistudiocdn.com/lucide-react@^0.556.0",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.1/",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.32.0",
+    "@supabase/supabase-js": "https://aistudiocdn.com/@supabase/supabase-js@^2.45.0"
+  }
+}
+</script>
+<style>
+  @media print {
+      /* Reset application layout constraints for printing */
+      html, body, #root, .vh-100, .overflow-hidden, main {
+          height: auto !important;
+          width: 100% !important;
+          overflow: visible !important;
+          position: static !important;
+          display: block !important;
+          background-color: white !important;
+      }
+      
+      /* Ensure text is black */
+      body {
+          color: black !important;
+      }
+
+      /* Hide background colors on main container to save ink, unless user enables background graphics */
+      .bg-light {
+          background-color: white !important;
+      }
+
+      /* Avoid breaking cards inside content */
+      .card {
+          break-inside: avoid;
+          border: 1px solid #ddd !important;
+          box-shadow: none !important;
+          margin-bottom: 20px !important;
+      }
+
+      /* Specific utility to hide scrollbars */
+      ::-webkit-scrollbar {
+          display: none;
+      }
+  }
+</style>
+</head>
+  <body class="bg-light">
+    <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+    <!-- Bootstrap JS Bundle -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js" integrity="sha384-C6RzsynM9kWDrMNeT87bh95OGNyZPhcTNXj1NW7RuBCsyN/o0jlpcV8Qyq46cDfL" crossorigin="anonymous"></script>
+  </body>
+</html>

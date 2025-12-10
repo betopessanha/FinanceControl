@@ -1,0 +1,5 @@
+{
+  "name": "Trucking Co. Accounting",
+  "description": "A comprehensive accounting system designed for trucking companies. It provides tools to manage transactions, track expenses and revenue by truck, and generate financial reports. This application is a prototype demonstrating the user interface and core features.",
+  "requestFramePermissions": []
+}
