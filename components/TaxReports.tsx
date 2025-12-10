@@ -109,26 +109,27 @@ const TaxReports: React.FC<TaxReportsProps> = ({ setActivePage }) => {
         'toll', 'scale', 'wage', 'salary', 'dispatch', 'factoring'
     ];
 
-    yearlyTransactions.filter(t => t.type === TransactionType.EXPENSE).forEach(t => {
+    // CENTRALIZED LOGIC FOR DEDUCTIBILITY
+    const isTransactionDeductible = (t: Transaction) => {
         const catName = t.category?.name || 'Uncategorized';
         const catNameLower = catName.toLowerCase().trim();
         const categoryObj = t.category;
 
-        // --- DEDUCTIBILITY CHECK ---
-        let isDeductible = true;
-
         // 1. Force Deductible for known business keywords (Overrides DB if marked false accidentally)
-        if (forcedDeductibleKeywords.some(k => catNameLower.includes(k))) {
-             isDeductible = true;
-        }
+        if (forcedDeductibleKeywords.some(k => catNameLower.includes(k))) return true;
+        
         // 2. Explicit Flag from Category Object
-        else if (categoryObj && categoryObj.isTaxDeductible !== undefined) {
-            isDeductible = categoryObj.isTaxDeductible;
-        } 
+        if (categoryObj && categoryObj.isTaxDeductible !== undefined) return categoryObj.isTaxDeductible;
+
         // 3. Fallback: Check Owner Draw Keywords
-        else if (ownerDrawKeywords.some(k => catNameLower.includes(k))) {
-            isDeductible = false;
-        }
+        if (ownerDrawKeywords.some(k => catNameLower.includes(k))) return false;
+
+        return true; // Default to deductible
+    };
+
+    yearlyTransactions.filter(t => t.type === TransactionType.EXPENSE).forEach(t => {
+        const catName = t.category?.name || 'Uncategorized';
+        const isDeductible = isTransactionDeductible(t);
 
         // --- ASSIGNMENT ---
         if (!isDeductible) {
@@ -182,20 +183,10 @@ const TaxReports: React.FC<TaxReportsProps> = ({ setActivePage }) => {
         
         // Filter categories that map to this line
         const relevantCategories = usedCategories.filter((catName: string) => {
-             const catNameLower = catName.toLowerCase().trim();
-             
-             // Replicate Deductibility Check for Filter
-             let isDeductible = true;
-             if (forcedDeductibleKeywords.some(k => catNameLower.includes(k))) isDeductible = true;
-             else {
-                 // We have to find the object to check the flag, which is tricky with just string list
-                 // Approximation: rely on mapping logic
-                 const repTrans = expenseTransactions.find(t => (t.category?.name || 'Uncategorized') === catName);
-                 if (repTrans?.category?.isTaxDeductible === false) isDeductible = false;
-                 else if (ownerDrawKeywords.some(k => catNameLower.includes(k))) isDeductible = false;
-             }
-
-             if (!isDeductible) return false;
+             // Re-verify deductibility for filter consistency
+             // Find a sample transaction for this category to check the object flag
+             const sampleT = expenseTransactions.find(t => (t.category?.name || 'Uncategorized') === catName);
+             if (sampleT && !isTransactionDeductible(sampleT)) return false;
 
              const mapped = getScheduleCLine(catName);
              return mapped === lineItem;
@@ -205,6 +196,24 @@ const TaxReports: React.FC<TaxReportsProps> = ({ setActivePage }) => {
             year: selectedYear.toString(),
             categoryNames: relevantCategories,
             sourceReport: lineItem
+        });
+
+        setActivePage('Transactions');
+    };
+
+    const handleNonDeductibleClick = () => {
+        if (!setActivePage) return;
+
+        // Filter for NON-Deductible
+        const expenseTransactions = yearlyTransactions.filter(t => t.type === TransactionType.EXPENSE);
+        const nonDeductibleTrans = expenseTransactions.filter(t => !isTransactionDeductible(t));
+        
+        const relevantCategories = Array.from(new Set(nonDeductibleTrans.map(t => t.category?.name || 'Uncategorized')));
+
+        setReportFilter({
+            year: selectedYear.toString(),
+            categoryNames: relevantCategories,
+            sourceReport: "Non-Deductible / Equity"
         });
 
         setActivePage('Transactions');
@@ -382,7 +391,14 @@ const TaxReports: React.FC<TaxReportsProps> = ({ setActivePage }) => {
                             <CardContent>
                                 <div className="d-flex justify-content-between align-items-center mb-2">
                                     <span className="fw-medium text-dark">Distributions</span>
-                                    <h4 className="fw-bold mb-0 text-dark">{formatCurrency(totalOwnerDraws)}</h4>
+                                    <button 
+                                        onClick={handleNonDeductibleClick}
+                                        className="btn btn-link p-0 text-decoration-none fw-bold text-dark d-inline-flex align-items-center"
+                                        title="View non-deductible transactions"
+                                    >
+                                        <h4 className="fw-bold mb-0 me-2">{formatCurrency(totalOwnerDraws)}</h4>
+                                        <ExternalLink size={16} className="text-muted opacity-75" />
+                                    </button>
                                 </div>
                                 <p className="small text-muted mb-0 fst-italic">
                                     <AlertCircle size={14} className="me-1 d-inline" />

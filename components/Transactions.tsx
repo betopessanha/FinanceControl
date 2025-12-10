@@ -988,8 +988,9 @@ const Transactions: React.FC = () => {
 
             <Card className="overflow-hidden">
                 <CardContent>
-                    <div className="d-flex flex-column flex-xl-row justify-content-between align-items-start align-items-xl-center mb-4 gap-3">
-                        <div className="d-flex gap-2 w-100 w-xl-auto" style={{ maxWidth: '400px' }}>
+                    {/* RESPONSIVE TOOLBAR: Stack vertically on mobile, row on desktop (lg+) */}
+                    <div className="d-flex flex-column flex-lg-row justify-content-between align-items-stretch align-items-lg-center mb-4 gap-3">
+                        <div className="w-100 w-lg-auto" style={{ maxWidth: '100%', minWidth: '300px' }}>
                             <div className="position-relative flex-grow-1">
                                 <span className="position-absolute top-50 start-0 translate-middle-y ps-3 text-muted">
                                     <Search size={18} />
@@ -997,20 +998,21 @@ const Transactions: React.FC = () => {
                                 <input 
                                     type="text" 
                                     placeholder="Search transactions..." 
-                                    className="form-control ps-5 rounded-pill bg-light border-0" 
+                                    className="form-control ps-5 rounded-pill bg-light border-0 w-100" 
                                     value={searchTerm}
                                     onChange={(e) => setSearchTerm(e.target.value)}
                                 />
                             </div>
                         </div>
                         
-                        <div className="d-flex flex-wrap gap-2 w-100 w-xl-auto justify-content-end align-items-center">
+                        {/* Stack filters and buttons vertically on mobile, horizontal on tablet+ */}
+                        <div className="d-flex flex-column flex-md-row flex-wrap gap-2 w-100 w-lg-auto justify-content-end align-items-stretch align-items-md-center">
                              
                              {/* Batch Delete Action - Visible only when items selected */}
                              {selectedIds.length > 0 && (
                                 <button 
                                     onClick={handleBatchDeleteClick} 
-                                    className="btn btn-danger d-flex align-items-center shadow-sm"
+                                    className="btn btn-danger d-flex align-items-center justify-content-center shadow-sm"
                                 >
                                     <Trash2 size={18} className="me-2" />
                                     Delete Selected ({selectedIds.length})
@@ -1018,17 +1020,16 @@ const Transactions: React.FC = () => {
                              )}
 
                              {/* Account Filter */}
-                             <div className="input-group w-auto">
+                             <div className="input-group flex-nowrap w-100 w-md-auto">
                                 <span className="input-group-text bg-white border-end-0 text-muted">
                                     <Wallet size={16} />
                                 </span>
                                 <select 
                                     className="form-select border-start-0 ps-0 bg-white" 
-                                    style={{maxWidth: '180px'}}
                                     value={selectedAccount}
                                     onChange={(e) => setSelectedAccount(e.target.value)}
                                 >
-                                    <option value="All">All Bank Accounts</option>
+                                    <option value="All">All Accounts</option>
                                     {accounts.map(acc => (
                                         <option key={acc.id} value={acc.id}>{acc.name}</option>
                                     ))}
@@ -1036,13 +1037,12 @@ const Transactions: React.FC = () => {
                              </div>
 
                              {/* Year Filter */}
-                             <div className="input-group w-auto">
+                             <div className="input-group flex-nowrap w-100 w-md-auto">
                                 <span className="input-group-text bg-white border-end-0 text-muted">
                                     <Calendar size={16} />
                                 </span>
                                 <select 
                                     className="form-select border-start-0 ps-0 bg-white" 
-                                    style={{maxWidth: '120px'}}
                                     value={selectedYear}
                                     onChange={(e) => setSelectedYear(e.target.value)}
                                 >
@@ -1053,15 +1053,17 @@ const Transactions: React.FC = () => {
                                 </select>
                              </div>
 
-                            <button onClick={() => setIsImportModalOpen(true)} className="btn btn-outline-primary d-flex align-items-center shadow-sm bg-white">
-                                <FileSpreadsheet size={18} className="me-2" />
-                                Import CSV
-                            </button>
+                            <div className="d-flex gap-2 w-100 w-md-auto">
+                                <button onClick={() => setIsImportModalOpen(true)} className="btn btn-outline-primary d-flex align-items-center justify-content-center shadow-sm bg-white flex-fill flex-md-grow-0">
+                                    <FileSpreadsheet size={18} className="me-2" />
+                                    Import
+                                </button>
 
-                            <button onClick={handleAddNewClick} className="btn btn-primary d-flex align-items-center shadow-sm">
-                                <PlusCircle size={18} className="me-2" />
-                                Add New
-                            </button>
+                                <button onClick={handleAddNewClick} className="btn btn-primary d-flex align-items-center justify-content-center shadow-sm flex-fill flex-md-grow-0">
+                                    <PlusCircle size={18} className="me-2" />
+                                    Add New
+                                </button>
+                            </div>
                         </div>
                     </div>
 
@@ -1129,10 +1131,12 @@ const Transactions: React.FC = () => {
                                                     onChange={() => handleSelectRow(t.id)}
                                                 />
                                             </td>
-                                            <td className="text-muted small" style={{whiteSpace: 'nowrap'}}>{formatDate(t.date)}</td>
-                                            <td className="fw-medium text-dark">
-                                                {t.description}
-                                                {t.truck && <span className="badge bg-light text-secondary border ms-2">{t.truck.unitNumber}</span>}
+                                            <td className="text-muted small text-nowrap">{formatDate(t.date)}</td>
+                                            <td className="fw-medium text-dark text-nowrap">
+                                                <div className="text-truncate" style={{maxWidth: '200px'}}>
+                                                    {t.description}
+                                                </div>
+                                                {t.truck && <span className="badge bg-light text-secondary border mt-1">{t.truck.unitNumber}</span>}
                                             </td>
                                             <td>
                                                 {t.type === TransactionType.TRANSFER ? (
@@ -1140,7 +1144,7 @@ const Transactions: React.FC = () => {
                                                         <ArrowRightLeft size={12} className="me-1"/> Transfer
                                                      </span>
                                                 ) : (
-                                                    <span className={`badge rounded-pill d-inline-flex align-items-center fw-medium border ${
+                                                    <span className={`badge rounded-pill d-inline-flex align-items-center fw-medium border text-nowrap ${
                                                         t.type === TransactionType.INCOME 
                                                         ? 'bg-white text-success border-success border-opacity-25' 
                                                         : 'bg-white text-danger border-danger border-opacity-25'
@@ -1150,7 +1154,7 @@ const Transactions: React.FC = () => {
                                                     </span>
                                                 )}
                                             </td>
-                                            <td className="small text-muted">
+                                            <td className="small text-muted text-nowrap">
                                                 {t.type === TransactionType.TRANSFER ? (
                                                     <div className="d-flex align-items-center gap-1">
                                                         <span className={t.accountId === selectedAccount ? 'fw-bold text-dark' : ''}>{getAccountName(t.accountId)}</span>
@@ -1161,7 +1165,7 @@ const Transactions: React.FC = () => {
                                                     getAccountName(t.accountId)
                                                 )}
                                             </td>
-                                            <td className={`text-end fw-bold ${amountClass}`}>
+                                            <td className={`text-end fw-bold ${amountClass} text-nowrap`}>
                                                 {sign} {formatCurrency(t.amount)}
                                             </td>
                                             <td className="text-center">
