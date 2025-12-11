@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { LayoutDashboard, FileText, BarChart2, Truck, UserCircle, ChevronDown, X, Tags, Landmark, CalendarRange, Wallet } from 'lucide-react';
+import { LayoutDashboard, FileText, BarChart2, Truck, UserCircle, ChevronDown, X, Tags, Landmark, CalendarRange, Wallet, LogOut } from 'lucide-react';
 import { Page } from '../App';
+import { useAuth } from '../lib/AuthContext';
 
 interface SidebarProps {
   activePage: Page;
@@ -48,6 +49,8 @@ const NavItem: React.FC<{
 
 
 const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage, isOpen, setIsOpen }) => {
+  const { user, signOut } = useAuth();
+  
   const navItems: Page[] = ['Dashboard', 'Transactions', 'Reports', 'Trucks', 'Categories', 'Accounts', 'Tax', 'FiscalYears'];
 
   const navIcons: { [key in Page]: React.ElementType } = {
@@ -158,15 +161,24 @@ const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage, isOpen, se
           </div>
 
           <div className="p-3 border-top">
-            <div className="d-flex align-items-center p-2 rounded hover-bg-light cursor-pointer">
-                <div className="bg-light rounded-circle d-flex align-items-center justify-content-center" style={{width: 40, height: 40}}>
-                     <UserCircle className="text-secondary" size={24} />
+            <div className="d-flex align-items-center justify-content-between p-2 rounded bg-light">
+                <div className="d-flex align-items-center overflow-hidden">
+                    <div className="bg-white rounded-circle d-flex align-items-center justify-content-center border" style={{width: 32, height: 32}}>
+                        <UserCircle className="text-secondary" size={20} />
+                    </div>
+                    <div className="ms-2 overflow-hidden">
+                        <small className="text-muted text-truncate d-block" style={{fontSize: '0.75rem', maxWidth: '140px'}}>
+                            {user?.email || 'User'}
+                        </small>
+                    </div>
                 </div>
-                <div className="ms-3 overflow-hidden">
-                    <p className="mb-0 fw-bold text-dark text-truncate" style={{fontSize: '0.9rem'}}>Admin User</p>
-                    <small className="text-muted text-truncate d-block">admin@trucking.io</small>
-                </div>
-                <ChevronDown className="ms-auto text-muted" size={16} />
+                <button 
+                    onClick={() => signOut()} 
+                    className="btn btn-sm btn-link text-danger p-0"
+                    title="Sign Out"
+                >
+                    <LogOut size={18} />
+                </button>
             </div>
           </div>
         </div>

@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
@@ -9,15 +8,30 @@ import TaxReports from './components/TaxReports';
 import FiscalYears from './components/FiscalYears';
 import BankAccounts from './components/BankAccounts';
 import Header from './components/Header';
-import { Truck, FileText, LayoutDashboard, BarChart2, Tags, Landmark, CalendarRange, Wallet } from 'lucide-react';
+import Login from './components/Login';
+import { Truck, FileText, LayoutDashboard, BarChart2, Tags, Landmark, CalendarRange, Wallet, Loader2 } from 'lucide-react';
 import Trucks from './components/Trucks';
 import { DataProvider } from './lib/DataContext';
+import { AuthProvider, useAuth } from './lib/AuthContext';
 
 export type Page = 'Dashboard' | 'Transactions' | 'Reports' | 'Trucks' | 'Categories' | 'Tax' | 'FiscalYears' | 'Accounts';
 
-const MainContent: React.FC = () => {
+const MainLayout: React.FC = () => {
     const [activePage, setActivePage] = useState<Page>('Dashboard');
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+    const { user, loading } = useAuth();
+
+    if (loading) {
+        return (
+            <div className="vh-100 d-flex align-items-center justify-content-center bg-light">
+                <Loader2 size={40} className="text-primary animate-spin" />
+            </div>
+        );
+    }
+
+    if (!user) {
+        return <Login />;
+    }
 
     const renderPage = () => {
         switch (activePage) {
@@ -54,34 +68,36 @@ const MainContent: React.FC = () => {
     };
 
     return (
-        <div className="d-flex vh-100 overflow-hidden">
-        <Sidebar 
-            activePage={activePage} 
-            setActivePage={setActivePage}
-            isOpen={isSidebarOpen}
-            setIsOpen={setIsSidebarOpen}
-        />
-        <div className="flex-grow-1 d-flex flex-column h-100 overflow-hidden position-relative">
-            <Header 
-            title={activePage} 
-            icon={pageIcons[activePage]}
-            onMenuClick={() => setIsSidebarOpen(true)}
-            />
-            <main className="flex-grow-1 overflow-auto bg-light p-3 p-md-4">
-            <div className="container-fluid p-0">
-                {renderPage()}
+        <DataProvider>
+            <div className="d-flex vh-100 overflow-hidden">
+                <Sidebar 
+                    activePage={activePage} 
+                    setActivePage={setActivePage}
+                    isOpen={isSidebarOpen}
+                    setIsOpen={setIsSidebarOpen}
+                />
+                <div className="flex-grow-1 d-flex flex-column h-100 overflow-hidden position-relative">
+                    <Header 
+                        title={activePage} 
+                        icon={pageIcons[activePage]}
+                        onMenuClick={() => setIsSidebarOpen(true)}
+                    />
+                    <main className="flex-grow-1 overflow-auto bg-light p-3 p-md-4">
+                        <div className="container-fluid p-0">
+                            {renderPage()}
+                        </div>
+                    </main>
+                </div>
             </div>
-            </main>
-        </div>
-        </div>
+        </DataProvider>
     );
 }
 
 const App: React.FC = () => {
   return (
-    <DataProvider>
-        <MainContent />
-    </DataProvider>
+    <AuthProvider>
+        <MainLayout />
+    </AuthProvider>
   );
 };
 
