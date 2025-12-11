@@ -8,9 +8,6 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { useData } from '../lib/DataContext';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
-// Helper to access env vars safely in various environments
-const API_KEY = process.env.API_KEY || '';
-
 // --- Sub-components ---
 
 interface TransactionFormModalProps {
@@ -384,11 +381,14 @@ const ImportTransactionsModal: React.FC<ImportTransactionsModalProps> = ({ isOpe
         }, 300);
 
         try {
-            if (!API_KEY) {
-                throw new Error("API Key is missing. Check your environment configuration.");
+            // Retrieve API KEY inside the function
+            const apiKey = process.env.API_KEY;
+
+            if (!apiKey) {
+                throw new Error("API Key is missing. Please ensure your environment variable 'API_KEY' is configured.");
             }
 
-            const ai = new GoogleGenAI({ apiKey: API_KEY });
+            const ai = new GoogleGenAI({ apiKey });
             
             const prompt = `
             Extract financial transactions from the following bank statement text. 
