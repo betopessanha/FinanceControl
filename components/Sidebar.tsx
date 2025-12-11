@@ -1,5 +1,4 @@
-
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { LayoutDashboard, FileText, BarChart2, Truck, UserCircle, ChevronDown, X, Tags, Landmark, CalendarRange, Wallet } from 'lucide-react';
 import { Page } from '../App';
 
@@ -67,37 +66,63 @@ const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage, isOpen, se
     setIsOpen(false); 
   };
 
-  // Inline styles for mobile overlay and transition
-  const sidebarStyle: React.CSSProperties = {
-    width: '280px',
-    zIndex: 1040,
-    transition: 'transform 0.3s ease-in-out',
-    position: 'fixed',
-    top: 0,
-    left: 0,
-    height: '100%',
-    transform: isOpen ? 'translateX(0)' : 'translateX(-100%)',
-  };
+  // State to track if we are in mobile view
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
-  const desktopSidebarStyle: React.CSSProperties = {
-     transform: 'none',
-     position: 'relative',
-  };
+  useEffect(() => {
+    const handleResize = () => {
+      const mobile = window.innerWidth < 768;
+      setIsMobile(mobile);
+      // If switching to desktop, ensure sidebar is 'open' conceptually (visible)
+      // but managed by CSS flow, so we don't need to force isOpen true, 
+      // just ensure the mobile toggle state doesn't interfere weirdly.
+      if (!mobile && isOpen) {
+          setIsOpen(false); // Reset mobile toggle when going to desktop
+      }
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [isOpen, setIsOpen]);
+
+  // Determine styles based on state
+  const sidebarStyle: React.CSSProperties = isMobile 
+    ? {
+        width: '280px',
+        zIndex: 1040,
+        transition: 'transform 0.3s ease-in-out',
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        height: '100%',
+        transform: isOpen ? 'translateX(0)' : 'translateX(-100%)',
+      }
+    : {
+        width: '280px',
+        position: 'relative',
+        transform: 'none',
+        height: '100%',
+    };
 
   return (
     <>
       {/* Overlay for mobile */}
-      <div
-        className={`position-fixed top-0 start-0 w-100 h-100 bg-dark bg-opacity-50 d-md-none d-print-none ${
-          isOpen ? 'd-block' : 'd-none'
-        }`}
-        style={{ zIndex: 1030 }}
-        onClick={() => setIsOpen(false)}
-      ></div>
+      {isMobile && (
+          <div
+            className={`position-fixed top-0 start-0 w-100 h-100 bg-dark bg-opacity-50 d-print-none`}
+            style={{ 
+                zIndex: 1030,
+                opacity: isOpen ? 1 : 0,
+                visibility: isOpen ? 'visible' : 'hidden',
+                transition: 'opacity 0.3s ease-in-out, visibility 0.3s ease-in-out'
+            }}
+            onClick={() => setIsOpen(false)}
+          ></div>
+      )}
 
       <aside
         className="d-flex flex-column flex-shrink-0 bg-white border-end shadow-sm h-100 d-print-none"
-        style={window.innerWidth >= 768 ? { ...sidebarStyle, ...desktopSidebarStyle } : sidebarStyle}
+        style={sidebarStyle}
       >
         <div className="d-flex flex-column h-100">
           <div className="d-flex align-items-center justify-content-between p-4 border-bottom">
@@ -110,9 +135,12 @@ const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage, isOpen, se
                 <small className="text-muted" style={{fontSize: '0.75rem', letterSpacing: '1px'}}>FLEET MANAGER</small>
               </div>
             </div>
-            <button className="btn btn-link text-secondary d-md-none p-0" onClick={() => setIsOpen(false)}>
-              <X size={24} />
-            </button>
+            {/* Close button only visible on mobile */}
+            {isMobile && (
+                <button className="btn btn-link text-secondary p-0" onClick={() => setIsOpen(false)}>
+                <X size={24} />
+                </button>
+            )}
           </div>
 
           <div className="flex-grow-1 overflow-auto p-3">
