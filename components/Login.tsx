@@ -1,56 +1,23 @@
 import React, { useState } from 'react';
 import { useAuth } from '../lib/AuthContext';
-import { Truck, Lock, User, Loader2, AlertCircle, CheckCircle, ArrowRight } from 'lucide-react';
+import { Truck, Lock, User, Loader2, AlertCircle } from 'lucide-react';
 
 const Login: React.FC = () => {
-    const { signIn, signUp } = useAuth();
-    const [isLoginMode, setIsLoginMode] = useState(true);
-    
+    const { signIn } = useAuth();
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const [successMessage, setSuccessMessage] = useState<string | null>(null);
-
-    const toggleMode = () => {
-        setIsLoginMode(!isLoginMode);
-        setError(null);
-        setSuccessMessage(null);
-        setEmail('');
-        setPassword('');
-    };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setIsLoading(true);
         setError(null);
-        setSuccessMessage(null);
 
         try {
-            if (isLoginMode) {
-                // SIGN IN FLOW
-                const result = await signIn(email, password);
-                if (result.error) {
-                    setError(result.error);
-                }
-            } else {
-                // SIGN UP FLOW
-                if (password.length < 6) {
-                    setError("Password must be at least 6 characters long.");
-                    setIsLoading(false);
-                    return;
-                }
-
-                const result = await signUp(email, password);
-                if (result.error) {
-                    setError(result.error);
-                } else if (result.message) {
-                    setSuccessMessage(result.message);
-                    // Optionally switch to login mode automatically after a delay
-                    if (!result.message.includes("check your email")) {
-                        setTimeout(() => setIsLoginMode(true), 2000);
-                    }
-                }
+            const result = await signIn(email, password);
+            if (result.error) {
+                setError(result.error);
             }
         } catch (err) {
             setError("An unexpected error occurred.");
@@ -67,28 +34,14 @@ const Login: React.FC = () => {
                         <div className="bg-primary bg-gradient text-white rounded p-3 d-inline-flex align-items-center justify-content-center shadow-sm mb-3">
                             <Truck size={32} />
                         </div>
-                        <h4 className="fw-bold text-dark">
-                            {isLoginMode ? "Welcome Back" : "Create Account"}
-                        </h4>
-                        <p className="text-muted small">
-                            {isLoginMode 
-                                ? "Sign in to manage your fleet accounting" 
-                                : "Join Trucking.io to start tracking expenses"}
-                        </p>
+                        <h4 className="fw-bold text-dark">Welcome Back</h4>
+                        <p className="text-muted small">Sign in to manage your fleet accounting</p>
                     </div>
 
-                    {/* Feedback Messages */}
                     {error && (
-                        <div className="alert alert-danger d-flex align-items-start small mb-3 animate-fade-in">
+                        <div className="alert alert-danger d-flex align-items-start small mb-3">
                             <AlertCircle size={16} className="me-2 mt-1 flex-shrink-0" />
                             <div>{error}</div>
-                        </div>
-                    )}
-
-                    {successMessage && (
-                        <div className="alert alert-success d-flex align-items-start small mb-3 animate-fade-in">
-                            <CheckCircle size={16} className="me-2 mt-1 flex-shrink-0" />
-                            <div>{successMessage}</div>
                         </div>
                     )}
 
@@ -111,9 +64,7 @@ const Login: React.FC = () => {
                         </div>
 
                         <div className="mb-4">
-                            <label className="form-label fw-bold small text-muted">
-                                {isLoginMode ? "Password" : "Create Password"}
-                            </label>
+                            <label className="form-label fw-bold small text-muted">Password</label>
                             <div className="input-group">
                                 <span className="input-group-text bg-light border-end-0 text-muted">
                                     <Lock size={18} />
@@ -121,11 +72,10 @@ const Login: React.FC = () => {
                                 <input 
                                     type="password" 
                                     className="form-control border-start-0 ps-0 bg-light" 
-                                    placeholder={isLoginMode ? "••••••••" : "Min 6 characters"}
+                                    placeholder="••••••••"
                                     value={password}
                                     onChange={(e) => setPassword(e.target.value)}
                                     required
-                                    minLength={isLoginMode ? undefined : 6}
                                 />
                             </div>
                         </div>
@@ -135,36 +85,14 @@ const Login: React.FC = () => {
                             className="btn btn-primary w-100 py-2 fw-bold d-flex align-items-center justify-content-center"
                             disabled={isLoading}
                         >
-                            {isLoading ? (
-                                <Loader2 size={20} className="animate-spin" />
-                            ) : (
-                                isLoginMode ? (
-                                    <>Sign In <ArrowRight size={18} className="ms-2" /></>
-                                ) : (
-                                    "Create Account"
-                                )
-                            )}
+                            {isLoading ? <Loader2 size={20} className="animate-spin" /> : 'Sign In'}
                         </button>
                     </form>
 
-                    <div className="mt-4 text-center pt-3 border-top">
-                        <p className="text-muted small mb-0">
-                            {isLoginMode ? "Don't have an account?" : "Already have an account?"}
-                        </p>
-                        <button 
-                            onClick={toggleMode} 
-                            className="btn btn-link fw-bold text-decoration-none p-0 mt-1"
-                        >
-                            {isLoginMode ? "Sign up for free" : "Log in here"}
-                        </button>
+                    <div className="mt-4 text-center">
+                        <small className="text-muted d-block">Demo Access:</small>
+                        <small className="text-muted fw-bold font-monospace">admin@trucking.io / admin</small>
                     </div>
-
-                    {isLoginMode && (
-                        <div className="mt-4 text-center bg-light p-2 rounded">
-                            <small className="text-muted d-block text-uppercase" style={{fontSize: '0.65rem'}}>Or use Demo Access:</small>
-                            <small className="text-dark fw-bold font-monospace">admin@trucking.io / admin</small>
-                        </div>
-                    )}
                 </div>
             </div>
         </div>
