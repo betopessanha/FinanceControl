@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import Card, { CardContent } from './ui/Card';
 import { Transaction, TransactionType, Category, BankAccount } from '../types';
@@ -381,14 +382,7 @@ const ImportTransactionsModal: React.FC<ImportTransactionsModalProps> = ({ isOpe
         }, 300);
 
         try {
-            // Retrieve API KEY inside the function
-            const apiKey = process.env.API_KEY;
-
-            if (!apiKey) {
-                throw new Error("API Key is missing. Please ensure your environment variable 'API_KEY' is configured.");
-            }
-
-            const ai = new GoogleGenAI({ apiKey });
+            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
             
             const prompt = `
             Extract financial transactions from the following bank statement text. 

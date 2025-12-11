@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import Card, { CardContent } from './ui/Card';
 import { Category, TransactionType } from '../types';
@@ -81,12 +82,7 @@ const Categories: React.FC = () => {
 
         try {
             // Safely retrieve API Key
-            const apiKey = process.env.API_KEY;
-            if (!apiKey) {
-                throw new Error("API Key is missing. Check .env variables.");
-            }
-
-            const ai = new GoogleGenAI({ apiKey });
+            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
             
             // Context: US Trucking Accounting (Schedule C)
             const prompt = `
