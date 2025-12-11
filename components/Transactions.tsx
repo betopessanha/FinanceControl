@@ -384,6 +384,10 @@ const ImportTransactionsModal: React.FC<ImportTransactionsModalProps> = ({ isOpe
         }, 300);
 
         try {
+            if (!API_KEY) {
+                throw new Error("API Key is missing. Check your environment configuration.");
+            }
+
             const ai = new GoogleGenAI({ apiKey: API_KEY });
             
             const prompt = `
@@ -432,7 +436,17 @@ const ImportTransactionsModal: React.FC<ImportTransactionsModalProps> = ({ isOpe
             const text = response.text;
             if (!text) throw new Error("No response from AI");
 
-            const rawData = JSON.parse(text);
+            // SAFE PARSE: Clean potential Markdown before parsing
+            // Sometimes models wrap output in ```json ... ```
+            const cleanText = text.replace(/```json/g, '').replace(/```/g, '').trim();
+
+            let rawData;
+            try {
+                rawData = JSON.parse(cleanText);
+            } catch (jsonErr) {
+                console.error("JSON Parse Error:", jsonErr, "Received:", cleanText);
+                throw new Error("Failed to parse AI response.");
+            }
 
             const mappedTransactions: Transaction[] = rawData.map((item: any, idx: number) => {
                 
@@ -471,11 +485,17 @@ const ImportTransactionsModal: React.FC<ImportTransactionsModalProps> = ({ isOpe
                 setStep('preview');
             }
 
-        } catch (e) {
-            console.error(e);
+        } catch (e: any) {
+            console.error("Import Error:", e);
             clearInterval(timer);
             setProgress(0);
-            setError("Failed to process text. The file might be empty or unreadable.");
+            
+            const msg = e.message || '';
+            if (msg.includes("API Key")) {
+                setError("API Key Error: Please check your environment variables.");
+            } else {
+                setError("Failed to process text. The file might be unreadable or the AI service is unavailable.");
+            }
         } finally {
             setLoading(false);
         }
