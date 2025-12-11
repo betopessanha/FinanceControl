@@ -82,7 +82,7 @@ const Categories: React.FC = () => {
 
         try {
             // Safely retrieve API Key
-            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || "AIzaSyCTiaKbGLUYgaKi2fUsaIrKWiOYxEnui6M" });
             
             // Context: US Trucking Accounting (Schedule C)
             const prompt = `
@@ -212,7 +212,7 @@ const Categories: React.FC = () => {
             // Full payload including the new column
             const fullPayload = { 
                 name: formData.name, 
-                type: formData.type,
+                type: formData.type, 
                 is_tax_deductible: formData.isTaxDeductible 
             };
 
