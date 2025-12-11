@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import Card, { CardContent } from './ui/Card';
 import { Category, TransactionType } from '../types';
@@ -81,7 +80,13 @@ const Categories: React.FC = () => {
         setAiReasoning('');
 
         try {
-            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+            // Safely retrieve API Key
+            const apiKey = process.env.API_KEY;
+            if (!apiKey) {
+                throw new Error("API Key is missing. Check .env variables.");
+            }
+
+            const ai = new GoogleGenAI({ apiKey });
             
             // Context: US Trucking Accounting (Schedule C)
             const prompt = `
@@ -126,9 +131,12 @@ const Categories: React.FC = () => {
                 setAiReasoning(result.reason);
             }
 
-        } catch (error) {
+        } catch (error: any) {
             console.error("AI Analysis failed", error);
-            setAiReasoning("Could not analyze automatically.");
+            const msg = error.message && error.message.includes("API Key") 
+                ? "API Key missing. Check environment variables." 
+                : "Could not analyze automatically.";
+            setAiReasoning(msg);
         } finally {
             setIsAnalyzing(false);
         }
@@ -438,8 +446,8 @@ const Categories: React.FC = () => {
                             </button>
                         </div>
                         {aiReasoning && (
-                            <div className="form-text text-info d-flex align-items-center mt-2">
-                                <Info size={14} className="me-1" /> AI Suggestion: {aiReasoning}
+                            <div className={`form-text d-flex align-items-center mt-2 ${aiReasoning.includes("API Key") ? "text-danger" : "text-info"}`}>
+                                <Info size={14} className="me-1" /> {aiReasoning.includes("API Key") ? "Error: " : "AI Suggestion: "} {aiReasoning}
                             </div>
                         )}
                     </div>
