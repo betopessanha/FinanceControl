@@ -382,7 +382,7 @@ const ImportTransactionsModal: React.FC<ImportTransactionsModalProps> = ({ isOpe
         }, 300);
 
         try {
-            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || "AIzaSyCTiaKbGLUYgaKi2fUsaIrKWiOYxEnui6M" });
+            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
             
             const prompt = `
             Extract financial transactions from the following bank statement text. 
@@ -1304,3 +1304,4 @@ const Transactions: React.FC = () => {
 };
 
 export default Transactions;
+    

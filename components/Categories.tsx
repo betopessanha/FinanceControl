@@ -31,11 +31,13 @@ const US_TRUCKING_CATEGORIES = [
     { name: 'Professional Services', type: TransactionType.EXPENSE, isTaxDeductible: true },
     { name: 'Office Supplies & Expenses', type: TransactionType.EXPENSE, isTaxDeductible: true },
     { name: 'Escrow Deductions', type: TransactionType.EXPENSE, isTaxDeductible: true },
+    // Added based on user request for vehicle purchase
+    { name: 'Truck/Trailer Purchase (Asset)', type: TransactionType.EXPENSE, isTaxDeductible: true }, 
 ];
 
 const Categories: React.FC = () => {
     // Consume Data
-    const { categories, refreshData, addLocalCategory, updateLocalCategory, deleteLocalCategory } = useData();
+    const { categories, refreshData, addLocalCategory, addLocalCategories, updateLocalCategory, deleteLocalCategory } = useData();
 
     const [activeTab, setActiveTab] = useState<TransactionType>(TransactionType.EXPENSE);
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -82,7 +84,7 @@ const Categories: React.FC = () => {
 
         try {
             // Safely retrieve API Key
-            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || "AIzaSyCTiaKbGLUYgaKi2fUsaIrKWiOYxEnui6M" });
+            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
             
             // Context: US Trucking Accounting (Schedule C)
             const prompt = `
@@ -141,41 +143,44 @@ const Categories: React.FC = () => {
     const handleSeedDefaults = async () => {
         setIsSeeding(true);
         
-        // 1. Local Seed
+        // 1. Determine what needs to be inserted
         const existingNames = categories.map(c => c.name.toLowerCase());
-        const toInsert = US_TRUCKING_CATEGORIES.filter(c => !existingNames.includes(c.name.toLowerCase()));
+        const toInsertDefs = US_TRUCKING_CATEGORIES.filter(c => !existingNames.includes(c.name.toLowerCase()));
         
-        if (toInsert.length === 0) {
+        if (toInsertDefs.length === 0) {
             alert("All standard US categories are already in your list.");
             setIsSeeding(false);
             return;
         }
 
-        toInsert.forEach((c, idx) => {
-            addLocalCategory({
-                id: `seed-${Date.now()}-${idx}`,
-                name: c.name,
-                type: c.type,
-                isTaxDeductible: c.isTaxDeductible
-            });
-        });
+        // 2. Prepare Local Objects
+        const newCategories: Category[] = toInsertDefs.map((c, idx) => ({
+            id: `seed-${Date.now()}-${idx}`,
+            name: c.name,
+            type: c.type,
+            isTaxDeductible: c.isTaxDeductible
+        }));
 
-        // 2. DB Seed (if connected)
+        // 3. Bulk Update Local State (Efficient)
+        addLocalCategories(newCategories);
+
+        // 4. DB Seed (if connected)
         if (isSupabaseConfigured && supabase) {
             try {
                 // Try inserting with tax field first
-                const dbPayload = toInsert.map(c => ({
+                const dbPayload = toInsertDefs.map(c => ({
                     name: c.name,
                     type: c.type,
                     is_tax_deductible: c.isTaxDeductible
                 }));
+                
                 const { error } = await supabase.from('categories').insert(dbPayload);
                 if (error) throw error;
             } catch (e) {
                 console.warn("Bulk insert failed (likely missing column), retrying without tax field...");
                  try {
                     // Fallback without tax field
-                    const fallbackPayload = toInsert.map(c => ({
+                    const fallbackPayload = toInsertDefs.map(c => ({
                         name: c.name,
                         type: c.type
                     }));
@@ -187,7 +192,7 @@ const Categories: React.FC = () => {
         }
         
         setIsSeeding(false);
-        alert(`Successfully added ${toInsert.length} US Trucking categories.`);
+        alert(`Successfully imported ${newCategories.length} categories.`);
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -495,3 +500,4 @@ const Categories: React.FC = () => {
 };
 
 export default Categories;
+    

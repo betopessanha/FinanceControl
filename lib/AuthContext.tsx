@@ -31,7 +31,8 @@ export const useAuth = () => useContext(AuthContext);
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const [user, setUser] = useState<User | null>(null);
     const [loading, setLoading] = useState(true);
-    const logoutTimerRef = useRef<NodeJS.Timeout | null>(null);
+    // Use 'any' or 'number' to avoid NodeJS namespace issues in pure frontend environments
+    const logoutTimerRef = useRef<any>(null);
 
     // --- TIMEOUT LOGIC ---
     const resetInactivityTimer = useCallback(() => {
@@ -41,7 +42,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             clearTimeout(logoutTimerRef.current);
         }
 
-        logoutTimerRef.current = setTimeout(() => {
+        // Use window.setTimeout to ensure browser behavior
+        logoutTimerRef.current = window.setTimeout(() => {
             console.log("Session timed out due to inactivity.");
             handleSignOut();
             alert("Session expired due to inactivity. Please log in again.");
@@ -122,8 +124,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     const signIn = async (email: string, password: string) => {
+        console.log("Attempting sign in for:", email);
+        
         // 1. Supabase Auth
         if (isSupabaseConfigured && supabase) {
+            console.log("Using Supabase Auth");
             const { data, error } = await supabase.auth.signInWithPassword({ email, password });
             if (error) return { error: error.message };
             if (data.user && data.user.email) {
@@ -132,6 +137,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             }
         } 
         
+        console.log("Using Mock Auth");
         // 2. Mock Auth (Fallback)
         // Check Hardcoded Admin
         if (email === 'admin@trucking.io' && password === 'admin') {

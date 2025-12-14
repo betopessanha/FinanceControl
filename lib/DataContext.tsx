@@ -28,10 +28,16 @@ interface DataContextType {
     deleteLocalTransaction: (id: string) => void;
     deleteLocalTransactions: (ids: string[]) => void; // Bulk delete support
 
-    // Methods for Categories (Fixing "Not Saving" issue)
+    // Methods for Categories
     addLocalCategory: (c: Category) => void;
+    addLocalCategories: (c: Category[]) => void; // NEW: Bulk add support
     updateLocalCategory: (c: Category) => void;
     deleteLocalCategory: (id: string) => void;
+
+    // Methods for Trucks
+    addLocalTruck: (t: Truck) => void;
+    updateLocalTruck: (t: Truck) => void;
+    deleteLocalTruck: (id: string) => void;
 }
 
 const DataContext = createContext<DataContextType>({
@@ -48,8 +54,12 @@ const DataContext = createContext<DataContextType>({
     deleteLocalTransaction: () => {},
     deleteLocalTransactions: () => {},
     addLocalCategory: () => {},
+    addLocalCategories: () => {}, // Init placeholder
     updateLocalCategory: () => {},
     deleteLocalCategory: () => {},
+    addLocalTruck: () => {},
+    updateLocalTruck: () => {},
+    deleteLocalTruck: () => {},
 });
 
 export const useData = () => useContext(DataContext);
@@ -91,7 +101,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setTransactions(mockTransactions);
             // Only set categories if we haven't modified them locally yet (simple check)
             if (categories.length === 0) setCategories(allCategories);
-            setTrucks(mockTrucks);
+            if (trucks.length === 0) setTrucks(mockTrucks);
             setAccounts(mockAccounts);
             setLoading(false);
             return;
@@ -99,9 +109,15 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         try {
             // 1. Fetch Static Data
-            const { data: catData } = await supabase.from('categories').select('*');
-            const { data: truckData } = await supabase.from('trucks').select('*');
-            const { data: accData } = await supabase.from('accounts').select('*');
+            // IMPORTANT: Check for errors! If auth fails (e.g. bad key), 'error' is populated and 'data' is null.
+            const { data: catData, error: catError } = await supabase.from('categories').select('*');
+            if (catError) throw catError;
+
+            const { data: truckData, error: truckError } = await supabase.from('trucks').select('*');
+            if (truckError) throw truckError;
+
+            const { data: accData, error: accError } = await supabase.from('accounts').select('*');
+            if (accError) throw accError;
 
             if (catData) setCategories(catData.map((c: any) => {
                 // Determine Tax Deductibility:
@@ -178,11 +194,17 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 setTransactions(formattedTransactions);
             }
 
-        } catch (error) {
-            console.error("Error fetching data from Supabase:", error);
+        } catch (error: any) {
+            console.error("Error fetching data from Supabase (falling back to Mock Data):", error);
+            
+            // ALERT THE USER if they thought they were connected
+            alert(`Failed to connect to Supabase database. \n\nError: ${error.message || 'Unknown Network Error'}\n\nFalling back to local demo mode. Please check your API URL and Key.`);
+
             // Fallback just in case of query error
             if (categories.length === 0) setCategories(allCategories);
-            setTransactions(mockTransactions);
+            if (trucks.length === 0) setTrucks(mockTrucks);
+            if (transactions.length === 0) setTransactions(mockTransactions);
+            if (accounts.length === 0) setAccounts(mockAccounts);
         } finally {
             setLoading(false);
         }
@@ -212,6 +234,14 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setCategories(prev => [...prev, c]);
     };
 
+    // NEW: Bulk add categories
+    const addLocalCategories = (newCategories: Category[]) => {
+        newCategories.forEach(c => {
+            if (c.isTaxDeductible !== undefined) setLocalTaxOverride(c.id, c.isTaxDeductible);
+        });
+        setCategories(prev => [...prev, ...newCategories]);
+    };
+
     const updateLocalCategory = (c: Category) => {
         if (c.isTaxDeductible !== undefined) setLocalTaxOverride(c.id, c.isTaxDeductible);
         setCategories(prev => prev.map(item => item.id === c.id ? c : item));
@@ -219,6 +249,19 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const deleteLocalCategory = (id: string) => {
         setCategories(prev => prev.filter(item => item.id !== id));
+    };
+
+    // Truck Local Helpers
+    const addLocalTruck = (t: Truck) => {
+        setTrucks(prev => [...prev, t]);
+    };
+
+    const updateLocalTruck = (t: Truck) => {
+        setTrucks(prev => prev.map(item => item.id === t.id ? t : item));
+    };
+
+    const deleteLocalTruck = (id: string) => {
+        setTrucks(prev => prev.filter(item => item.id !== id));
     };
 
     useEffect(() => {
@@ -230,7 +273,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             transactions, categories, trucks, accounts, loading, refreshData: fetchData, 
             reportFilter, setReportFilter,
             addLocalTransaction, updateLocalTransaction, deleteLocalTransaction, deleteLocalTransactions,
-            addLocalCategory, updateLocalCategory, deleteLocalCategory
+            addLocalCategory, addLocalCategories, updateLocalCategory, deleteLocalCategory,
+            addLocalTruck, updateLocalTruck, deleteLocalTruck
         }}>
             {children}
         </DataContext.Provider>

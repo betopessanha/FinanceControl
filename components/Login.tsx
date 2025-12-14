@@ -1,6 +1,8 @@
+
 import React, { useState } from 'react';
 import { useAuth } from '../lib/AuthContext';
-import { Truck, Lock, User, Loader2, AlertCircle } from 'lucide-react';
+import { Truck, Lock, User, Loader2, AlertCircle, Database, WifiOff, FileText } from 'lucide-react';
+import { isSupabaseConfigured } from '../lib/supabase';
 
 const Login: React.FC = () => {
     const { signIn } = useAuth();
@@ -36,6 +38,21 @@ const Login: React.FC = () => {
                         </div>
                         <h4 className="fw-bold text-dark">Welcome Back</h4>
                         <p className="text-muted small">Sign in to manage your fleet accounting</p>
+                    </div>
+
+                    {/* Connection Status Indicator */}
+                    <div className={`alert ${isSupabaseConfigured ? 'alert-success border-success' : 'alert-warning border-warning'} d-flex align-items-center justify-content-center py-2 mb-4 bg-opacity-10`}>
+                        {isSupabaseConfigured ? (
+                            <>
+                                <Database size={14} className="me-2" />
+                                <small className="fw-bold">Database: Connected</small>
+                            </>
+                        ) : (
+                            <>
+                                <WifiOff size={14} className="me-2" />
+                                <small className="fw-bold">Mode: Local Demo</small>
+                            </>
+                        )}
                     </div>
 
                     {error && (
@@ -89,10 +106,26 @@ const Login: React.FC = () => {
                         </button>
                     </form>
 
-                    <div className="mt-4 text-center">
-                        <small className="text-muted d-block">Demo Access:</small>
-                        <small className="text-muted fw-bold font-monospace">admin@trucking.io / admin</small>
-                    </div>
+                    {!isSupabaseConfigured && (
+                        <div className="mt-4 pt-3 border-top">
+                            <div className="text-center mb-3">
+                                <small className="text-muted d-block">Demo Credentials:</small>
+                                <small className="text-muted fw-bold font-monospace">admin@trucking.io / admin</small>
+                            </div>
+                            
+                            <div className="bg-light p-2 rounded border small text-muted">
+                                <div className="d-flex align-items-center mb-1 text-warning fw-bold">
+                                    <FileText size={12} className="me-1" /> 
+                                    Setup Required:
+                                </div>
+                                Create a <code>.env</code> file in root with:
+                                <pre className="m-0 mt-1 p-1 bg-white border rounded" style={{fontSize: '0.65rem'}}>
+                                    VITE_SUPABASE_URL=...<br/>
+                                    VITE_SUPABASE_ANON_KEY=...
+                                </pre>
+                            </div>
+                        </div>
+                    )}
                 </div>
             </div>
         </div>
