@@ -1,69 +1,46 @@
-
 import { createClient } from '@supabase/supabase-js';
 
-// Helper to safely access env vars from various sources (Vite, Next, CRA, Node)
-const getEnv = (key: string) => {
-    // 1. Try Vite standard (import.meta.env)
-    try {
-        const meta = import.meta as any;
-        if (typeof meta !== 'undefined' && meta.env && meta.env[key]) {
-            return meta.env[key];
-        }
-    } catch (e) { }
+// 1. Attempt to get variables explicitly from Vite's import.meta.env
+const viteUrl = (import.meta as any).env?.VITE_SUPABASE_URL;
+const viteKey = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY;
 
-    // 2. Try Process Env (explicit checks for bundlers that replace strings but don't polyfill the object)
+// 2. Fallback helper for other environments
+const getProcessEnv = (key: string) => {
     try {
         if (typeof process !== 'undefined' && process.env) {
-            // Explicit checks for common keys to ensure bundler replacement works
-            if (key === 'VITE_SUPABASE_URL') return process.env.VITE_SUPABASE_URL;
-            if (key === 'VITE_SUPABASE_ANON_KEY') return process.env.VITE_SUPABASE_ANON_KEY;
-            
-            // Fallback for other frameworks
-            if (key === 'NEXT_PUBLIC_SUPABASE_URL') return process.env.NEXT_PUBLIC_SUPABASE_URL;
-            if (key === 'NEXT_PUBLIC_SUPABASE_ANON_KEY') return process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-            if (key === 'REACT_APP_SUPABASE_URL') return process.env.REACT_APP_SUPABASE_URL;
-            if (key === 'REACT_APP_SUPABASE_ANON_KEY') return process.env.REACT_APP_SUPABASE_ANON_KEY;
-
-            // Generic dynamic check (Node.js / some bundlers)
-            if (process.env[key]) return process.env[key];
+            return process.env[key];
         }
     } catch (e) { }
-
     return undefined;
 };
 
-// Retrieve URL and Key checking multiple common naming conventions
-const getSupabaseUrl = () => {
-    return getEnv('VITE_SUPABASE_URL') || 
-           getEnv('NEXT_PUBLIC_SUPABASE_URL') || 
-           getEnv('REACT_APP_SUPABASE_URL') || 
-           "";
-};
+// Select the best available value
+const rawUrl = viteUrl || getProcessEnv('VITE_SUPABASE_URL') || getProcessEnv('NEXT_PUBLIC_SUPABASE_URL') || "";
+const rawKey = viteKey || getProcessEnv('VITE_SUPABASE_ANON_KEY') || getProcessEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY') || "";
 
-const getSupabaseKey = () => {
-    return getEnv('VITE_SUPABASE_ANON_KEY') || 
-           getEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY') || 
-           getEnv('REACT_APP_SUPABASE_ANON_KEY') || 
-           "";
-};
+// 3. STRICT Validation
+// We check if it's a real URL and not a placeholder like "https://your-project.supabase.co"
+const isUrlValid = rawUrl && rawUrl.startsWith('http') && !rawUrl.includes('your-project');
+const isKeyValid = rawKey && rawKey.length > 20 && !rawKey.includes('placeholder');
 
-const supabaseUrl = getSupabaseUrl();
-const supabaseKey = getSupabaseKey();
+export const isSupabaseConfigured = isUrlValid && isKeyValid;
 
-// Only consider configured if we have a valid-looking URL and Key
-export const isSupabaseConfigured = 
-    supabaseUrl && 
-    supabaseUrl.startsWith('http') && 
-    supabaseKey && 
-    supabaseKey.length > 20; // Supabase keys are usually long JWTs
-
-if (!isSupabaseConfigured) {
-    console.log("Supabase is not configured (using mock data). To use a real DB, set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.");
-} else {
-    console.log("Supabase configured with URL:", supabaseUrl);
+// --- DEBUG LOGGING (Localhost Only) ---
+if (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
+    console.groupCollapsed("🔧 Dev Environment: Database Connection");
+    if (isSupabaseConfigured) {
+        console.log("Status: ✅ Connected to Supabase");
+        console.log("URL:", rawUrl);
+    } else {
+        console.log("Status: ⚠️ Running in DEMO MODE (Mock Data)");
+        console.log("Reason: Missing or invalid .env keys.");
+        console.log("To connect DB: Create .env with VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY");
+    }
+    console.groupEnd();
 }
+// ---------------------
 
-// Initialize client
+// Initialize client only if valid, otherwise null to force mock data usage
 export const supabase = isSupabaseConfigured 
-    ? createClient(supabaseUrl, supabaseKey) 
+    ? createClient(rawUrl, rawKey) 
     : null;
