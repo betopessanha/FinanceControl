@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import Card, { CardContent } from './ui/Card';
 import { Transaction, TransactionType, Category, BankAccount } from '../types';
 import { formatCurrency, formatDate } from '../lib/utils';
-import { PlusCircle, Search, Filter, MoreHorizontal, ArrowDownCircle, ArrowUpCircle, Paperclip, Upload, X, Edit2, Sparkles, Loader2, Calendar, Wallet, ArrowRightLeft, ArrowRight, FileSpreadsheet, Check, UploadCloud, AlertTriangle, Trash2 } from 'lucide-react';
+import { PlusCircle, Search, Filter, MoreHorizontal, ArrowDownCircle, ArrowUpCircle, Paperclip, Upload, X, Edit2, Sparkles, Loader2, Calendar, Wallet, ArrowRightLeft, ArrowRight, FileSpreadsheet, Check, UploadCloud, AlertTriangle, Trash2, Save, FileClock, CheckCircle2 } from 'lucide-react';
 import Modal from './ui/Modal';
 import { GoogleGenAI, Type } from "@google/genai";
 import { useData } from '../lib/DataContext';
@@ -290,11 +290,10 @@ const TransactionFormModal: React.FC<TransactionFormModalProps> = ({ isOpen, onC
 interface ImportTransactionsModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onImport: (transactions: Transaction[]) => void;
+  onImport: (transactions: Transaction[]) => Promise<boolean>;
 }
 
 const ImportTransactionsModal: React.FC<ImportTransactionsModalProps> = ({ isOpen, onClose, onImport }) => {
-    // ... [Previous Import Modal Code remains unchanged, collapsed for brevity in this response but would be included fully in final output] ...
     const { categories, accounts } = useData();
     const [inputText, setInputText] = useState('');
     const [loading, setLoading] = useState(false);
@@ -303,14 +302,25 @@ const ImportTransactionsModal: React.FC<ImportTransactionsModalProps> = ({ isOpe
     const [error, setError] = useState<string | null>(null);
     const [fileName, setFileName] = useState<string | null>(null);
     const [progress, setProgress] = useState(0);
+    const [hasSavedDraft, setHasSavedDraft] = useState(false);
+    
+    // UI Feedback States
+    const [saveStatus, setSaveStatus] = useState<'idle' | 'saved'>('idle');
+    const [isFinalizing, setIsFinalizing] = useState(false);
 
     // New state for selected account
     const [selectedImportAccountId, setSelectedImportAccountId] = useState<string>('');
 
-    // Initialize with first account
+    // Check for existing draft on open
     useEffect(() => {
-        if (isOpen && accounts.length > 0 && !selectedImportAccountId) {
-            setSelectedImportAccountId(accounts[0].id);
+        if (isOpen) {
+            const draft = localStorage.getItem('import_draft_data');
+            if (draft) setHasSavedDraft(true);
+            else setHasSavedDraft(false);
+
+            if (accounts.length > 0 && !selectedImportAccountId) {
+                setSelectedImportAccountId(accounts[0].id);
+            }
         }
     }, [isOpen, accounts]);
 
@@ -321,8 +331,40 @@ const ImportTransactionsModal: React.FC<ImportTransactionsModalProps> = ({ isOpe
         setError(null);
         setFileName(null);
         setProgress(0);
+        setSaveStatus('idle');
+        setIsFinalizing(false);
         // Reset to first account
         if (accounts.length > 0) setSelectedImportAccountId(accounts[0].id);
+    };
+
+    const handleResumeDraft = () => {
+        const draft = localStorage.getItem('import_draft_data');
+        if (draft) {
+            try {
+                const data = JSON.parse(draft);
+                setParsedData(data);
+                setStep('preview');
+            } catch (e) {
+                console.error("Failed to load draft", e);
+                localStorage.removeItem('import_draft_data');
+                setHasSavedDraft(false);
+            }
+        }
+    };
+
+    const handleSaveDraft = () => {
+        try {
+            const dataToSave = JSON.stringify(parsedData);
+            localStorage.setItem('import_draft_data', dataToSave);
+            setHasSavedDraft(true);
+            
+            // Visual feedback
+            setSaveStatus('saved');
+            setTimeout(() => setSaveStatus('idle'), 2000);
+        } catch (e) {
+            console.error("Save Draft Failed", e);
+            alert("Failed to save draft. Storage might be full.");
+        }
     };
 
     const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -431,7 +473,6 @@ const ImportTransactionsModal: React.FC<ImportTransactionsModalProps> = ({ isOpe
             if (!text) throw new Error("No response from AI");
 
             // SAFE PARSE: Clean potential Markdown before parsing
-            // Sometimes models wrap output in ```json ... ```
             const cleanText = text.replace(/```json/g, '').replace(/```/g, '').trim();
 
             let rawData;
@@ -448,7 +489,6 @@ const ImportTransactionsModal: React.FC<ImportTransactionsModalProps> = ({ isOpe
                 let processedAmount = Number(item.amount);
                 let processedType = item.type;
 
-                // If negative, it is definitely an expense, and we store it as positive
                 if (processedAmount < 0) {
                     processedAmount = Math.abs(processedAmount);
                     processedType = 'Expense';
@@ -461,10 +501,9 @@ const ImportTransactionsModal: React.FC<ImportTransactionsModalProps> = ({ isOpe
                     id: `temp-import-${Date.now()}-${idx}`,
                     date: item.date,
                     description: item.description,
-                    amount: processedAmount, // Should be positive now
+                    amount: processedAmount,
                     type: processedType === 'Income' ? TransactionType.INCOME : TransactionType.EXPENSE,
                     category: matchedCategory,
-                    // Use selected account ID
                     accountId: selectedImportAccountId || accounts[0]?.id || 'unknown',
                     receipts: []
                 } as Transaction;
@@ -500,7 +539,7 @@ const ImportTransactionsModal: React.FC<ImportTransactionsModalProps> = ({ isOpe
         const item = { ...updatedData[index] };
 
         if (field === 'amount') {
-            item.amount = Math.abs(parseFloat(value) || 0); // Always enforce positive on manual edit too
+            item.amount = Math.abs(parseFloat(value) || 0); 
         } else if (field === 'category') {
             const newCat = categories.find(c => c.id === value);
             item.category = newCat;
@@ -518,9 +557,21 @@ const ImportTransactionsModal: React.FC<ImportTransactionsModalProps> = ({ isOpe
         setParsedData(parsedData.filter((_, i) => i !== index));
     };
 
-    const handleConfirmImport = () => {
-        onImport(parsedData);
-        reset();
+    const handleConfirmImport = async () => {
+        setIsFinalizing(true);
+        try {
+            // Parent now returns boolean indicating success
+            const success = await onImport(parsedData);
+            if (success) {
+                localStorage.removeItem('import_draft_data');
+                // Modal is closed by parent on success
+            }
+        } catch (e) {
+            console.error(e);
+            alert("Unexpected error during finalization.");
+        } finally {
+            setIsFinalizing(false);
+        }
     };
 
     const clearSelection = () => {
@@ -538,6 +589,22 @@ const ImportTransactionsModal: React.FC<ImportTransactionsModalProps> = ({ isOpe
             {step === 'input' ? (
                 <div className="d-flex flex-column gap-3">
                     
+                    {/* Resume Draft Option */}
+                    {hasSavedDraft && (
+                        <div className="alert alert-info d-flex align-items-center justify-content-between">
+                            <div className="d-flex align-items-center">
+                                <FileClock size={20} className="me-2" />
+                                <div>
+                                    <strong>Unsaved Draft Found!</strong>
+                                    <div className="small">You have a previously saved import draft. Would you like to resume it?</div>
+                                </div>
+                            </div>
+                            <button className="btn btn-sm btn-light border fw-bold text-primary" onClick={handleResumeDraft}>
+                                Resume Draft
+                            </button>
+                        </div>
+                    )}
+
                     {/* Account Selector */}
                     <div className="mb-2">
                         <label className="form-label fw-bold small text-muted">Target Account for Import</label>
@@ -619,7 +686,7 @@ const ImportTransactionsModal: React.FC<ImportTransactionsModalProps> = ({ isOpe
                             disabled={loading || !inputText.trim()}
                         >
                             {loading ? <Loader2 className="animate-spin me-2" size={18} /> : <Sparkles className="me-2" size={18} />}
-                            {loading ? 'Processing...' : 'Analyze & Import'}
+                            {loading ? 'Processing...' : 'Analyze File'}
                         </button>
                     </div>
                     <p className="text-muted small fst-italic mt-2 mb-0">
@@ -711,7 +778,26 @@ const ImportTransactionsModal: React.FC<ImportTransactionsModalProps> = ({ isOpe
                     </div>
                     <div className="d-flex justify-content-between pt-3 border-top">
                          <button className="btn btn-light" onClick={() => setStep('input')}>Back</button>
-                         <button className="btn btn-success" onClick={handleConfirmImport}>Confirm Import ({parsedData.length})</button>
+                         <div className="d-flex gap-2">
+                             <button 
+                                type="button" 
+                                className={`btn d-flex align-items-center ${saveStatus === 'saved' ? 'btn-success text-white' : 'btn-outline-secondary'}`} 
+                                onClick={handleSaveDraft}
+                                disabled={saveStatus !== 'idle' || isFinalizing}
+                             >
+                                 {saveStatus === 'saved' ? <Check size={18} className="me-2" /> : <Save size={18} className="me-2" />}
+                                 {saveStatus === 'saved' ? 'Saved!' : 'Save Draft (Temporary)'}
+                             </button>
+                             <button 
+                                type="button"
+                                className="btn btn-success d-flex align-items-center" 
+                                onClick={handleConfirmImport}
+                                disabled={isFinalizing}
+                             >
+                                 {isFinalizing ? <Loader2 size={18} className="me-2 animate-spin" /> : <CheckCircle2 size={18} className="me-2" />}
+                                 {isFinalizing ? 'Finalizing...' : `Finalize & Import (${parsedData.length})`}
+                             </button>
+                         </div>
                     </div>
                 </div>
             )}
@@ -836,33 +922,42 @@ const Transactions: React.FC = () => {
         }
     };
 
-    const handleBulkImport = async (newTransactions: Transaction[]) => {
-        // Optimistic update for import
-        newTransactions.forEach(t => addLocalTransaction(t));
-        setIsImportModalOpen(false);
+    // Returns boolean indicating success
+    const handleBulkImport = async (newTransactions: Transaction[]): Promise<boolean> => {
+        // Logic Changed: Save to DB BEFORE adding to local state (Pessimistic Update)
+        
+        if (isSupabaseConfigured && supabase) {
+            try {
+                // Prepare payloads for DB
+                const dbPayloads = newTransactions.map(t => ({
+                    date: t.date,
+                    description: t.description,
+                    amount: t.amount,
+                    type: t.type,
+                    account_id: t.accountId,
+                    category_id: t.category?.id || null,
+                    truck_id: null, // Imports typically don't have truck assignment initially
+                    receipts: []
+                }));
 
-        if (!isSupabaseConfigured || !supabase) {
-            return;
-        }
+                const { error } = await supabase.from('transactions').insert(dbPayloads);
+                if (error) throw error;
 
-        const dbPayloads = newTransactions.map(t => ({
-            date: t.date,
-            description: t.description,
-            amount: t.amount,
-            type: t.type,
-            account_id: t.accountId,
-            category_id: t.category?.id || null,
-            truck_id: null, // Imports typically don't have truck assignment initially
-            receipts: []
-        }));
-
-        try {
-            const { error } = await supabase.from('transactions').insert(dbPayloads);
-            if (error) throw error;
-        } catch (e) {
-            console.error(e);
-            alert("Failed to import transactions to DB.");
-            await refreshData(); // Revert
+                // Success! Now update UI by fetching the real data from DB
+                await refreshData(); 
+                setIsImportModalOpen(false);
+                return true;
+                
+            } catch (e) {
+                console.error(e);
+                alert("Failed to save transactions to database. Import cancelled.");
+                return false;
+            }
+        } else {
+            // Demo Mode: Optimistic update is fine since there is no DB to fail
+            newTransactions.forEach(t => addLocalTransaction(t));
+            setIsImportModalOpen(false);
+            return true;
         }
     };
 
@@ -1304,4 +1399,3 @@ const Transactions: React.FC = () => {
 };
 
 export default Transactions;
-    
