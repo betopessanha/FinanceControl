@@ -1,9 +1,13 @@
 import React, { createContext, useContext, useEffect, useState, useRef, useCallback } from 'react';
 import { supabase, isSupabaseConfigured } from './supabase';
 
-// --- CONFIGURATION ---
-// Timeout in milliseconds (e.g., 15 minutes = 15 * 60 * 1000)
-const SESSION_TIMEOUT_MS = 15 * 60 * 1000; 
+// Helper to get timeout duration (Default: 15 minutes)
+const getSessionTimeout = () => {
+    if (typeof window === 'undefined') return 15 * 60 * 1000;
+    const stored = localStorage.getItem('custom_session_timeout');
+    const minutes = stored ? parseInt(stored, 10) : 15;
+    return minutes * 60 * 1000; // Convert to milliseconds
+};
 
 interface User {
     email: string;
@@ -42,12 +46,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             clearTimeout(logoutTimerRef.current);
         }
 
+        const timeoutDuration = getSessionTimeout();
+
         // Use window.setTimeout to ensure browser behavior
         logoutTimerRef.current = window.setTimeout(() => {
             console.log("Session timed out due to inactivity.");
             handleSignOut();
-            alert("Session expired due to inactivity. Please log in again.");
-        }, SESSION_TIMEOUT_MS);
+            alert(`Session expired due to inactivity (${timeoutDuration / 60000} minutes). Please log in again.`);
+        }, timeoutDuration);
     }, [user]);
 
     // Setup Activity Listeners

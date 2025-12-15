@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { LayoutDashboard, FileText, BarChart2, Truck, UserCircle, ChevronDown, X, Tags, Landmark, CalendarRange, Wallet, LogOut } from 'lucide-react';
+import { LayoutDashboard, FileText, BarChart2, Truck, UserCircle, ChevronDown, X, Tags, Landmark, CalendarRange, Wallet, LogOut, Settings } from 'lucide-react';
 import { Page } from '../App';
 import { useAuth } from '../lib/AuthContext';
 
@@ -51,7 +51,7 @@ const NavItem: React.FC<{
 const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage, isOpen, setIsOpen }) => {
   const { user, signOut } = useAuth();
   
-  const navItems: Page[] = ['Dashboard', 'Transactions', 'Reports', 'Trucks', 'Categories', 'Accounts', 'Tax', 'FiscalYears'];
+  const navItems: Page[] = ['Dashboard', 'Transactions', 'Reports', 'Trucks', 'Categories', 'Accounts', 'Tax', 'FiscalYears', 'Settings'];
 
   const navIcons: { [key in Page]: React.ElementType } = {
     Dashboard: LayoutDashboard,
@@ -62,6 +62,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage, isOpen, se
     Accounts: Wallet,
     Tax: Landmark,
     FiscalYears: CalendarRange,
+    Settings: Settings,
   };
   
   const handleNavigation = (page: Page) => {

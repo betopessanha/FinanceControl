@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../lib/AuthContext';
-import { Truck, Lock, User, Loader2, AlertCircle, Database, WifiOff, Terminal, CheckCircle2, Settings, Save, Trash2 } from 'lucide-react';
-import { isSupabaseConfigured, saveConnectionSettings, clearConnectionSettings } from '../lib/supabase';
+import { Truck, Lock, User, Loader2, AlertCircle, Database, WifiOff, CheckCircle2, Settings, Save, Clock } from 'lucide-react';
+import { isSupabaseConfigured } from '../lib/supabase';
 import Modal from './ui/Modal';
 
 const Login: React.FC = () => {
@@ -20,23 +20,20 @@ const Login: React.FC = () => {
 
     // Configuration Modal State
     const [isConfigOpen, setIsConfigOpen] = useState(false);
-    const [configUrl, setConfigUrl] = useState('');
-    const [configKey, setConfigKey] = useState('');
+    const [timeoutMinutes, setTimeoutMinutes] = useState('15');
 
     useEffect(() => {
         const local = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
         setIsLocalhost(local);
 
+        // Load saved settings
+        const storedTimeout = localStorage.getItem('custom_session_timeout');
+        if (storedTimeout) setTimeoutMinutes(storedTimeout);
+
         // AUTO-FILL FOR DEMO MODE
         if (!isSupabaseConfigured) {
             setEmail('admin@trucking.io');
             setPassword('admin');
-        } else {
-            // If connected, check if it's manual local storage to pre-fill config modal
-            const localUrl = localStorage.getItem('custom_supabase_url');
-            const localKey = localStorage.getItem('custom_supabase_key');
-            if (localUrl) setConfigUrl(localUrl);
-            if (localKey) setConfigKey(localKey);
         }
     }, []);
 
@@ -78,15 +75,14 @@ const Login: React.FC = () => {
 
     const handleSaveConfig = (e: React.FormEvent) => {
         e.preventDefault();
-        if (configUrl && configKey) {
-            saveConnectionSettings(configUrl, configKey);
+        
+        // Save Timeout Setting
+        if (timeoutMinutes) {
+            localStorage.setItem('custom_session_timeout', timeoutMinutes);
         }
-    };
 
-    const handleClearConfig = () => {
-        if(window.confirm("Disconnect from this database? You will return to Demo Mode.")) {
-            clearConnectionSettings();
-        }
+        // Only timeout changed, reload to apply auth settings fresh
+        window.location.reload();
     };
 
     return (
@@ -97,7 +93,7 @@ const Login: React.FC = () => {
                 <button 
                     onClick={() => setIsConfigOpen(true)}
                     className="btn btn-light shadow-sm border rounded-circle p-2 text-secondary hover-text-primary"
-                    title="Database Connection Settings"
+                    title="System Settings"
                 >
                     <Settings size={20} />
                 </button>
@@ -117,10 +113,7 @@ const Login: React.FC = () => {
 
                     {/* Connection Status Indicator */}
                     <div 
-                        className={`alert ${isSupabaseConfigured ? 'alert-success border-success' : 'alert-warning border-warning'} d-flex align-items-center justify-content-center py-2 mb-4 bg-opacity-10 cursor-pointer`}
-                        onClick={() => setIsConfigOpen(true)}
-                        title="Click to configure database"
-                        style={{ cursor: 'pointer' }}
+                        className={`alert ${isSupabaseConfigured ? 'alert-success border-success' : 'alert-warning border-warning'} d-flex align-items-center justify-content-center py-2 mb-4 bg-opacity-10`}
                     >
                         {isSupabaseConfigured ? (
                             <>
@@ -239,53 +232,42 @@ const Login: React.FC = () => {
                 </div>
             </div>
 
-            {/* DB Configuration Modal */}
+            {/* Config Modal */}
             <Modal
                 isOpen={isConfigOpen}
                 onClose={() => setIsConfigOpen(false)}
-                title="Database Connection"
+                title="System Settings"
             >
                 <form onSubmit={handleSaveConfig}>
-                    <p className="text-muted small mb-3">
-                        Since you cannot edit the <code>.env</code> file directly in this environment, 
-                        enter your Supabase credentials here. They will be saved to your browser's local storage.
-                    </p>
                     
-                    <div className="mb-3">
-                        <label className="form-label fw-bold small text-muted">Supabase URL</label>
-                        <input 
-                            type="text" 
-                            className="form-control" 
-                            placeholder="https://xyz.supabase.co"
-                            value={configUrl}
-                            onChange={(e) => setConfigUrl(e.target.value)}
-                            required
-                        />
+                    {/* App Settings Section */}
+                    <div className="mb-4">
+                        <h6 className="fw-bold text-dark border-bottom pb-2 d-flex align-items-center">
+                            <Settings size={16} className="me-2" /> App Configuration
+                        </h6>
+                        <div className="mb-3">
+                            <label className="form-label fw-bold small text-muted">Session Timeout (Minutes)</label>
+                            <div className="input-group input-group-sm">
+                                <span className="input-group-text bg-light border-end-0 text-muted">
+                                    <Clock size={16} />
+                                </span>
+                                <input 
+                                    type="number" 
+                                    className="form-control border-start-0 ps-0 bg-light" 
+                                    value={timeoutMinutes}
+                                    onChange={(e) => setTimeoutMinutes(e.target.value)}
+                                    min="1"
+                                    max="1440"
+                                    required
+                                />
+                            </div>
+                            <div className="form-text small">Users will be automatically logged out after inactivity.</div>
+                        </div>
                     </div>
 
-                    <div className="mb-3">
-                        <label className="form-label fw-bold small text-muted">Anon Key</label>
-                        <input 
-                            type="password" 
-                            className="form-control" 
-                            placeholder="eyJhbGciOiJIUzI1NiIsInR..."
-                            value={configKey}
-                            onChange={(e) => setConfigKey(e.target.value)}
-                            required
-                        />
-                    </div>
-
-                    <div className="d-flex justify-content-between pt-2 border-top mt-4">
-                        {localStorage.getItem('custom_supabase_url') ? (
-                             <button type="button" onClick={handleClearConfig} className="btn btn-outline-danger d-flex align-items-center">
-                                <Trash2 size={16} className="me-2" /> Disconnect
-                            </button>
-                        ) : (
-                            <div></div>
-                        )}
-                       
+                    <div className="d-flex justify-content-end pt-2 border-top mt-4">
                         <button type="submit" className="btn btn-primary d-flex align-items-center">
-                            <Save size={16} className="me-2" /> Save & Reload
+                            <Save size={16} className="me-2" /> Save Settings & Reload
                         </button>
                     </div>
                 </form>
