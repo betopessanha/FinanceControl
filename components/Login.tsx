@@ -1,8 +1,9 @@
 
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../lib/AuthContext';
-import { Truck, Lock, User, Loader2, AlertCircle, Database, WifiOff, Terminal, CheckCircle2 } from 'lucide-react';
-import { isSupabaseConfigured } from '../lib/supabase';
+import { Truck, Lock, User, Loader2, AlertCircle, Database, WifiOff, Terminal, CheckCircle2, Settings, Save, Trash2 } from 'lucide-react';
+import { isSupabaseConfigured, saveConnectionSettings, clearConnectionSettings } from '../lib/supabase';
+import Modal from './ui/Modal';
 
 const Login: React.FC = () => {
     const { signIn, signUp } = useAuth();
@@ -17,6 +18,11 @@ const Login: React.FC = () => {
     const [successMessage, setSuccessMessage] = useState<string | null>(null);
     const [isLocalhost, setIsLocalhost] = useState(false);
 
+    // Configuration Modal State
+    const [isConfigOpen, setIsConfigOpen] = useState(false);
+    const [configUrl, setConfigUrl] = useState('');
+    const [configKey, setConfigKey] = useState('');
+
     useEffect(() => {
         const local = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
         setIsLocalhost(local);
@@ -25,6 +31,12 @@ const Login: React.FC = () => {
         if (!isSupabaseConfigured) {
             setEmail('admin@trucking.io');
             setPassword('admin');
+        } else {
+            // If connected, check if it's manual local storage to pre-fill config modal
+            const localUrl = localStorage.getItem('custom_supabase_url');
+            const localKey = localStorage.getItem('custom_supabase_key');
+            if (localUrl) setConfigUrl(localUrl);
+            if (localKey) setConfigKey(localKey);
         }
     }, []);
 
@@ -64,8 +76,33 @@ const Login: React.FC = () => {
         setIsLoginView(true);
     };
 
+    const handleSaveConfig = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (configUrl && configKey) {
+            saveConnectionSettings(configUrl, configKey);
+        }
+    };
+
+    const handleClearConfig = () => {
+        if(window.confirm("Disconnect from this database? You will return to Demo Mode.")) {
+            clearConnectionSettings();
+        }
+    };
+
     return (
-        <div className="d-flex min-vh-100 align-items-center justify-content-center bg-light">
+        <div className="d-flex min-vh-100 align-items-center justify-content-center bg-light position-relative">
+            
+            {/* Config Button (Top Right) */}
+            <div className="position-absolute top-0 end-0 p-3">
+                <button 
+                    onClick={() => setIsConfigOpen(true)}
+                    className="btn btn-light shadow-sm border rounded-circle p-2 text-secondary hover-text-primary"
+                    title="Database Connection Settings"
+                >
+                    <Settings size={20} />
+                </button>
+            </div>
+
             <div className="card border-0 shadow-lg" style={{ maxWidth: '450px', width: '100%' }}>
                 <div className="card-body p-5">
                     <div className="text-center mb-4">
@@ -79,7 +116,12 @@ const Login: React.FC = () => {
                     </div>
 
                     {/* Connection Status Indicator */}
-                    <div className={`alert ${isSupabaseConfigured ? 'alert-success border-success' : 'alert-warning border-warning'} d-flex align-items-center justify-content-center py-2 mb-4 bg-opacity-10`}>
+                    <div 
+                        className={`alert ${isSupabaseConfigured ? 'alert-success border-success' : 'alert-warning border-warning'} d-flex align-items-center justify-content-center py-2 mb-4 bg-opacity-10 cursor-pointer`}
+                        onClick={() => setIsConfigOpen(true)}
+                        title="Click to configure database"
+                        style={{ cursor: 'pointer' }}
+                    >
                         {isSupabaseConfigured ? (
                             <>
                                 <Database size={14} className="me-2" />
@@ -196,6 +238,58 @@ const Login: React.FC = () => {
                     )}
                 </div>
             </div>
+
+            {/* DB Configuration Modal */}
+            <Modal
+                isOpen={isConfigOpen}
+                onClose={() => setIsConfigOpen(false)}
+                title="Database Connection"
+            >
+                <form onSubmit={handleSaveConfig}>
+                    <p className="text-muted small mb-3">
+                        Since you cannot edit the <code>.env</code> file directly in this environment, 
+                        enter your Supabase credentials here. They will be saved to your browser's local storage.
+                    </p>
+                    
+                    <div className="mb-3">
+                        <label className="form-label fw-bold small text-muted">Supabase URL</label>
+                        <input 
+                            type="text" 
+                            className="form-control" 
+                            placeholder="https://xyz.supabase.co"
+                            value={configUrl}
+                            onChange={(e) => setConfigUrl(e.target.value)}
+                            required
+                        />
+                    </div>
+
+                    <div className="mb-3">
+                        <label className="form-label fw-bold small text-muted">Anon Key</label>
+                        <input 
+                            type="password" 
+                            className="form-control" 
+                            placeholder="eyJhbGciOiJIUzI1NiIsInR..."
+                            value={configKey}
+                            onChange={(e) => setConfigKey(e.target.value)}
+                            required
+                        />
+                    </div>
+
+                    <div className="d-flex justify-content-between pt-2 border-top mt-4">
+                        {localStorage.getItem('custom_supabase_url') ? (
+                             <button type="button" onClick={handleClearConfig} className="btn btn-outline-danger d-flex align-items-center">
+                                <Trash2 size={16} className="me-2" /> Disconnect
+                            </button>
+                        ) : (
+                            <div></div>
+                        )}
+                       
+                        <button type="submit" className="btn btn-primary d-flex align-items-center">
+                            <Save size={16} className="me-2" /> Save & Reload
+                        </button>
+                    </div>
+                </form>
+            </Modal>
         </div>
     );
 };
