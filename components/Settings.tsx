@@ -1,20 +1,29 @@
 
 import React, { useState, useEffect } from 'react';
 import Card, { CardHeader, CardTitle, CardContent } from './ui/Card';
-import { Clock, Save, CheckCircle2, LogOut, Briefcase, PlusCircle, Trash2, Edit2, Building } from 'lucide-react';
+import { Clock, Save, CheckCircle2, LogOut, Briefcase, PlusCircle, Trash2, Edit2, Building, Database, Lock, Unlock, Server, AlertTriangle, Eye, EyeOff, Loader2, ShieldAlert } from 'lucide-react';
 import { useAuth } from '../lib/AuthContext';
-import { supabase } from '../lib/supabase';
+import { supabase, saveConnectionSettings, clearConnectionSettings, isSupabaseConfigured } from '../lib/supabase';
 import { useData } from '../lib/DataContext';
 import { BusinessEntity, LegalStructure } from '../types';
 import Modal from './ui/Modal';
 
 const Settings: React.FC = () => {
-    const { signOut } = useAuth();
+    const { user, signIn, signOut } = useAuth();
     const { businessEntities, addLocalEntity, updateLocalEntity, deleteLocalEntity } = useData();
     
     // Config State
     const [timeoutMinutes, setTimeoutMinutes] = useState('15');
     const [saved, setSaved] = useState(false);
+
+    // Database Config State
+    const [isDbLocked, setIsDbLocked] = useState(true);
+    const [unlockPassword, setUnlockPassword] = useState('');
+    const [isVerifying, setIsVerifying] = useState(false);
+    const [dbUrl, setDbUrl] = useState('');
+    const [dbKey, setDbKey] = useState('');
+    const [showKey, setShowKey] = useState(false);
+    const [dbError, setDbError] = useState<string | null>(null);
 
     // Entity Management State
     const [isEntityModalOpen, setIsEntityModalOpen] = useState(false);
@@ -29,6 +38,12 @@ const Settings: React.FC = () => {
         // Load current settings from Local Storage
         const storedTimeout = localStorage.getItem('custom_session_timeout');
         if (storedTimeout) setTimeoutMinutes(storedTimeout);
+
+        // Load existing DB config if exists (for display purposes if unlocked, though we usually keep empty until unlock)
+        const storedUrl = localStorage.getItem('custom_supabase_url');
+        const storedKey = localStorage.getItem('custom_supabase_key');
+        if (storedUrl) setDbUrl(storedUrl);
+        if (storedKey) setDbKey(storedKey);
     }, []);
 
     const handleSaveAppConfig = async (e: React.FormEvent) => {
@@ -44,6 +59,58 @@ const Settings: React.FC = () => {
         }, 500);
     };
 
+    const handleUnlockDbSettings = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setIsVerifying(true);
+        setDbError(null);
+
+        // Security Check: Verify current user password AND Role
+        if (user && user.email) {
+            
+            // 1. Verify Role (Access Level)
+            if (user.role !== 'admin') {
+                setDbError("Access Denied: You do not have permission to modify system connections.");
+                setIsVerifying(false);
+                return;
+            }
+
+            // 2. Verify Password (Identity)
+            const result = await signIn(user.email, unlockPassword);
+            if (result.error) {
+                setDbError("Incorrect password. Access denied.");
+                setIsVerifying(false);
+            } else {
+                setIsDbLocked(false);
+                setIsVerifying(false);
+                setUnlockPassword('');
+            }
+        } else {
+            // Should not happen if logged in
+            setDbError("User session not found.");
+            setIsVerifying(false);
+        }
+    };
+
+    const handleSaveDatabase = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!dbUrl.startsWith('http')) {
+            alert("Invalid URL. Must start with https://");
+            return;
+        }
+        if (dbKey.length < 20) {
+            alert("Invalid Key. It seems too short.");
+            return;
+        }
+        saveConnectionSettings(dbUrl, dbKey);
+    };
+
+    const handleDisconnectDatabase = () => {
+        if(window.confirm("Are you sure? This will return the app to Demo Mode.")) {
+            clearConnectionSettings();
+        }
+    }
+
+    // --- Entity Helpers ---
     const getTaxFormForStructure = (structure: LegalStructure): string => {
         switch (structure) {
             case 'Sole Proprietorship': return 'Schedule C (Form 1040)';
@@ -109,6 +176,119 @@ const Settings: React.FC = () => {
                   <p className="text-muted mb-0">System configuration and business profile.</p>
                 </div>
             </div>
+
+            {/* Database Connection Settings (Protected) */}
+            <Card className="mb-4 border-primary border-opacity-25">
+                <CardHeader className="bg-primary bg-opacity-10 border-bottom-0">
+                    <div className="d-flex align-items-center">
+                        <Database className="me-2 text-primary" size={20} />
+                        <CardTitle>Database Connection (Supabase)</CardTitle>
+                    </div>
+                </CardHeader>
+                <CardContent>
+                    {isDbLocked ? (
+                        <div className="text-center py-3">
+                            <div className="mb-3">
+                                <Lock size={32} className="text-muted opacity-25" />
+                            </div>
+                            <h6 className="fw-bold">Configuration Locked</h6>
+                            <p className="text-muted small mb-3">
+                                {user?.role === 'admin' 
+                                    ? "Enter your Admin password to manage the database connection." 
+                                    : "You do not have the required access level to modify this."}
+                            </p>
+                            
+                            <form onSubmit={handleUnlockDbSettings} className="d-inline-block text-start" style={{maxWidth: '300px', width: '100%'}}>
+                                <div className="input-group mb-2">
+                                    <input 
+                                        type="password" 
+                                        className="form-control"
+                                        placeholder="Enter Password"
+                                        value={unlockPassword}
+                                        onChange={(e) => setUnlockPassword(e.target.value)}
+                                        required
+                                        disabled={user?.role !== 'admin'}
+                                    />
+                                    <button className="btn btn-primary" type="submit" disabled={isVerifying || user?.role !== 'admin'}>
+                                        {isVerifying ? <Loader2 size={16} className="animate-spin" /> : 'Unlock'}
+                                    </button>
+                                </div>
+                                {dbError ? (
+                                    <small className="text-danger fw-bold d-flex align-items-center">
+                                        <ShieldAlert size={14} className="me-1"/> {dbError}
+                                    </small>
+                                ) : (
+                                    user?.role !== 'admin' && (
+                                        <small className="text-muted d-block fst-italic">
+                                            Current Role: {user?.role.toUpperCase()} (Admin Required)
+                                        </small>
+                                    )
+                                )}
+                            </form>
+                        </div>
+                    ) : (
+                        <form onSubmit={handleSaveDatabase}>
+                            <div className="alert alert-info d-flex align-items-center small mb-3">
+                                <Unlock size={16} className="me-2 flex-shrink-0" />
+                                <div>
+                                    <strong>Settings Unlocked.</strong> Enter your project credentials below.
+                                </div>
+                            </div>
+
+                            <div className="mb-3">
+                                <label className="form-label fw-bold small text-muted">Project URL</label>
+                                <div className="input-group">
+                                    <span className="input-group-text bg-light"><Server size={16}/></span>
+                                    <input 
+                                        type="url" 
+                                        className="form-control"
+                                        value={dbUrl}
+                                        onChange={(e) => setDbUrl(e.target.value)}
+                                        placeholder="https://your-project.supabase.co"
+                                        required
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="mb-4">
+                                <label className="form-label fw-bold small text-muted">Anon API Key</label>
+                                <div className="input-group">
+                                    <span className="input-group-text bg-light"><Database size={16}/></span>
+                                    <input 
+                                        type={showKey ? "text" : "password"}
+                                        className="form-control"
+                                        value={dbKey}
+                                        onChange={(e) => setDbKey(e.target.value)}
+                                        placeholder="eyJh..."
+                                        required
+                                    />
+                                    <button 
+                                        type="button" 
+                                        className="btn btn-light border"
+                                        onClick={() => setShowKey(!showKey)}
+                                    >
+                                        {showKey ? <EyeOff size={16}/> : <Eye size={16}/>}
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div className="d-flex justify-content-between align-items-center border-top pt-3">
+                                {isSupabaseConfigured && (
+                                    <button type="button" onClick={handleDisconnectDatabase} className="btn btn-outline-danger btn-sm">
+                                        Disconnect / Reset
+                                    </button>
+                                )}
+                                <div className="d-flex gap-2 ms-auto">
+                                    <button type="button" onClick={() => setIsDbLocked(true)} className="btn btn-light border">Lock</button>
+                                    <button type="submit" className="btn btn-primary">
+                                        <Save size={16} className="me-2" /> Connect & Reload
+                                    </button>
+                                </div>
+                            </div>
+                        </form>
+                    )}
+                </CardContent>
+            </Card>
 
             {/* Business Entities Management */}
             <Card className="mb-4">

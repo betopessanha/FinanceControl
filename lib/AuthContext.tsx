@@ -1,3 +1,4 @@
+
 import React, { createContext, useContext, useEffect, useState, useRef, useCallback } from 'react';
 import { supabase, isSupabaseConfigured } from './supabase';
 
@@ -9,9 +10,12 @@ const getSessionTimeout = () => {
     return minutes * 60 * 1000; // Convert to milliseconds
 };
 
+export type UserRole = 'admin' | 'user' | 'driver';
+
 interface User {
     email: string;
     id: string;
+    role: UserRole; // Added Role
 }
 
 interface AuthContextType {
@@ -108,7 +112,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             }
             
             if (data.user) {
-                setUser({ id: data.user.id, email: data.user.email || email });
+                // Default Supabase signups to Admin for this single-tenant app prototype
+                setUser({ id: data.user.id, email: data.user.email || email, role: 'admin' });
                 return { error: null, message: "Account created successfully!" };
             }
             return { error: "Unknown error during registration." };
@@ -118,11 +123,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const storedUsers = JSON.parse(localStorage.getItem('mock_users_db') || '[]');
         const userExists = storedUsers.some((u: any) => u.email === email);
         
-        if (userExists || email === 'admin@trucking.io') {
+        if (userExists || email === 'admin@trucking.io' || email === 'driver@trucking.io') {
             return { error: "User already exists." };
         }
 
-        const newUser = { id: `mock-${Date.now()}`, email, password };
+        // Default new mock users to 'admin' so they can use the app fully, unless specified
+        const newUser = { id: `mock-${Date.now()}`, email, password, role: 'admin' };
         storedUsers.push(newUser);
         localStorage.setItem('mock_users_db', JSON.stringify(storedUsers));
 
@@ -138,16 +144,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             const { data, error } = await supabase.auth.signInWithPassword({ email, password });
             if (error) return { error: error.message };
             if (data.user && data.user.email) {
-                setUser({ id: data.user.id, email: data.user.email });
+                // In a real app, we would fetch the role from a 'profiles' table here.
+                // For this prototype, we assume authenticated Supabase users are Admins/Owners.
+                setUser({ id: data.user.id, email: data.user.email, role: 'admin' });
                 return { error: null };
             }
         } 
         
         console.log("Using Mock Auth");
         // 2. Mock Auth (Fallback)
-        // Check Hardcoded Admin
+        
+        // Hardcoded Admin
         if (email === 'admin@trucking.io' && password === 'admin') {
-            const mockUser = { id: 'mock-admin-id', email };
+            const mockUser: User = { id: 'mock-admin-id', email, role: 'admin' };
+            setUser(mockUser);
+            localStorage.setItem('active_mock_user', JSON.stringify(mockUser));
+            return { error: null };
+        }
+
+        // Hardcoded Driver (Restricted Access)
+        if (email === 'driver@trucking.io' && password === 'driver') {
+            const mockUser: User = { id: 'mock-driver-id', email, role: 'driver' };
             setUser(mockUser);
             localStorage.setItem('active_mock_user', JSON.stringify(mockUser));
             return { error: null };
@@ -158,13 +175,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const foundUser = storedUsers.find((u: any) => u.email === email && u.password === password);
 
         if (foundUser) {
-            const userObj = { id: foundUser.id, email: foundUser.email };
+            const userObj: User = { id: foundUser.id, email: foundUser.email, role: foundUser.role || 'admin' };
             setUser(userObj);
             localStorage.setItem('active_mock_user', JSON.stringify(userObj));
             return { error: null };
         }
 
-        return { error: "Invalid credentials. If using demo, try admin@trucking.io / admin" };
+        return { error: "Invalid credentials. Try admin@trucking.io (Admin) or driver@trucking.io (Restricted)" };
     };
 
     // Initialize Auth State on Load
@@ -173,7 +190,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             if (isSupabaseConfigured && supabase) {
                 const { data: { session } } = await supabase.auth.getSession();
                 if (session?.user?.email) {
-                    setUser({ id: session.user.id, email: session.user.email });
+                    setUser({ id: session.user.id, email: session.user.email, role: 'admin' });
                 }
             } else {
                 // Check for mock session persistence
@@ -191,7 +208,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (isSupabaseConfigured && supabase) {
             const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
                 if (session?.user?.email) {
-                    setUser({ id: session.user.id, email: session.user.email });
+                    setUser({ id: session.user.id, email: session.user.email, role: 'admin' });
                 } else {
                     setUser(null);
                 }
