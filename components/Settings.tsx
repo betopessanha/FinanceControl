@@ -1,20 +1,24 @@
 
 import React, { useState, useEffect } from 'react';
 import Card, { CardHeader, CardTitle, CardContent } from './ui/Card';
-import { Clock, Save, CheckCircle2, LogOut, Briefcase, PlusCircle, Trash2, Edit2, Building, Database, Lock, Unlock, Server, AlertTriangle, Eye, EyeOff, Loader2, ShieldAlert } from 'lucide-react';
+import { Clock, Save, CheckCircle2, LogOut, Briefcase, PlusCircle, Trash2, Edit2, Building, Database, Lock, Unlock, Server, ShieldAlert, Eye, EyeOff, Loader2 } from 'lucide-react';
 import { useAuth } from '../lib/AuthContext';
-import { supabase, saveConnectionSettings, clearConnectionSettings, isSupabaseConfigured } from '../lib/supabase';
+import { saveConnectionSettings, clearConnectionSettings, isSupabaseConfigured } from '../lib/supabase';
 import { useData } from '../lib/DataContext';
 import { BusinessEntity, LegalStructure } from '../types';
 import Modal from './ui/Modal';
 
 const Settings: React.FC = () => {
     const { user, signIn, signOut } = useAuth();
-    const { businessEntities, addLocalEntity, updateLocalEntity, deleteLocalEntity } = useData();
+    const { 
+        businessEntities, addLocalEntity, updateLocalEntity, deleteLocalEntity, 
+        saveSystemSetting // Using context method to save to DB
+    } = useData();
     
     // Config State
     const [timeoutMinutes, setTimeoutMinutes] = useState('15');
     const [saved, setSaved] = useState(false);
+    const [isSaving, setIsSaving] = useState(false);
 
     // Database Config State
     const [isDbLocked, setIsDbLocked] = useState(true);
@@ -35,11 +39,11 @@ const Settings: React.FC = () => {
     });
 
     useEffect(() => {
-        // Load current settings from Local Storage
+        // Load current settings from Local Storage (which is synced from DB on load)
         const storedTimeout = localStorage.getItem('custom_session_timeout');
         if (storedTimeout) setTimeoutMinutes(storedTimeout);
 
-        // Load existing DB config if exists (for display purposes if unlocked, though we usually keep empty until unlock)
+        // Load existing DB config if exists
         const storedUrl = localStorage.getItem('custom_supabase_url');
         const storedKey = localStorage.getItem('custom_supabase_key');
         if (storedUrl) setDbUrl(storedUrl);
@@ -48,15 +52,21 @@ const Settings: React.FC = () => {
 
     const handleSaveAppConfig = async (e: React.FormEvent) => {
         e.preventDefault();
+        setIsSaving(true);
+        
         if (timeoutMinutes) {
-            localStorage.setItem('custom_session_timeout', timeoutMinutes);
+            // Save to Supabase (and LocalStorage via helper)
+            await saveSystemSetting('custom_session_timeout', timeoutMinutes);
         }
+
         setSaved(true);
+        setIsSaving(false);
+        
         setTimeout(async () => {
             localStorage.removeItem('active_mock_user');
             await signOut();
             window.location.reload();
-        }, 500);
+        }, 1000);
     };
 
     const handleUnlockDbSettings = async (e: React.FormEvent) => {
@@ -142,7 +152,7 @@ const Settings: React.FC = () => {
         setIsEntityModalOpen(true);
     };
 
-    const handleSaveEntity = (e: React.FormEvent) => {
+    const handleSaveEntity = async (e: React.FormEvent) => {
         e.preventDefault();
         const taxForm = getTaxFormForStructure(entityForm.structure);
         
@@ -155,16 +165,16 @@ const Settings: React.FC = () => {
         };
 
         if (editingEntity) {
-            updateLocalEntity(newEntity);
+            await updateLocalEntity(newEntity);
         } else {
-            addLocalEntity(newEntity);
+            await addLocalEntity(newEntity);
         }
         setIsEntityModalOpen(false);
     };
 
-    const handleDeleteEntity = (id: string) => {
+    const handleDeleteEntity = async (id: string) => {
         if (window.confirm("Delete this business entity? Accounts linked to it may need updating.")) {
-            deleteLocalEntity(id);
+            await deleteLocalEntity(id);
         }
     };
 
@@ -379,8 +389,8 @@ const Settings: React.FC = () => {
                 </Card>
 
                 <div className="d-flex align-items-center gap-3">
-                    <button type="submit" className="btn btn-primary d-flex align-items-center px-4">
-                        <Save size={18} className="me-2" />
+                    <button type="submit" className="btn btn-primary d-flex align-items-center px-4" disabled={isSaving}>
+                        {isSaving ? <Loader2 size={18} className="me-2 animate-spin"/> : <Save size={18} className="me-2" />}
                         Save App Settings
                     </button>
                     {saved && (

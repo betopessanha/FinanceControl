@@ -188,10 +188,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     useEffect(() => {
         const initAuth = async () => {
             if (isSupabaseConfigured && supabase) {
+                // 1. Get Session
                 const { data: { session } } = await supabase.auth.getSession();
                 if (session?.user?.email) {
                     setUser({ id: session.user.id, email: session.user.email, role: 'admin' });
                 }
+
+                // 2. Sync App Settings (Timeout)
+                try {
+                    const { data: settings } = await supabase.from('app_settings').select('*');
+                    if (settings) {
+                        settings.forEach((s: any) => {
+                            if (s.key === 'custom_session_timeout') {
+                                localStorage.setItem('custom_session_timeout', s.value);
+                            }
+                        });
+                    }
+                } catch(e) { console.error("Failed to sync auth settings", e); }
+
             } else {
                 // Check for mock session persistence
                 const stored = localStorage.getItem('active_mock_user');

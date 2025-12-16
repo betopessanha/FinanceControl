@@ -44,6 +44,13 @@ export interface BankAccount {
   businessEntityId?: string; // Link to the legal entity owning this account
 }
 
+export interface FiscalYearRecord {
+    year: number;
+    status: 'Open' | 'Closed';
+    manualBalance?: number;
+    notes?: string;
+}
+
 export interface Transaction {
   id: string;
   date: string; // ISO string format

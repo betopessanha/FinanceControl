@@ -10,7 +10,10 @@ import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
 const BankAccounts: React.FC = () => {
     // Consume Data
-    const { accounts, refreshData, businessEntities } = useData();
+    const { 
+        accounts, refreshData, businessEntities,
+        addLocalAccount, updateLocalAccount, deleteLocalAccount 
+    } = useData();
 
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingAccount, setEditingAccount] = useState<BankAccount | null>(null);
@@ -48,57 +51,73 @@ const BankAccounts: React.FC = () => {
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         
-        if (!isSupabaseConfigured || !supabase) {
-             alert("Database not connected (Demo Mode). Changes will revert on reload if not implemented locally.");
-             // For demo completeness we would implement addLocalAccount here, but relying on context refresh logic usually
-             return;
+        const accountId = editingAccount ? editingAccount.id : `acc-${Date.now()}`;
+        
+        const accountObj: BankAccount = {
+            id: accountId,
+            ...formData
+        };
+
+        // 1. Optimistic Update (Immediate UI Refresh)
+        if (editingAccount) {
+            updateLocalAccount(accountObj);
+        } else {
+            addLocalAccount(accountObj);
         }
 
-        try {
-            const payload = { 
-                name: formData.name, 
-                type: formData.type,
-                initial_balance: formData.initialBalance,
-                business_entity_id: formData.businessEntityId || null // New Field
-            };
+        setIsModalOpen(false);
 
-            if (editingAccount) {
-                // Edit existing
-                await supabase
-                    .from('accounts')
-                    .update(payload)
-                    .eq('id', editingAccount.id);
-            } else {
-                // Add new
-                await supabase
-                    .from('accounts')
-                    .insert([payload]);
+        // 2. Persist to DB (if configured)
+        if (isSupabaseConfigured && supabase) {
+            try {
+                const payload = { 
+                    name: formData.name, 
+                    type: formData.type,
+                    initial_balance: formData.initialBalance,
+                    business_entity_id: formData.businessEntityId || null 
+                };
+
+                if (editingAccount) {
+                    const { error } = await supabase
+                        .from('accounts')
+                        .update(payload)
+                        .eq('id', editingAccount.id);
+                    if (error) throw error;
+                } else {
+                    const { error } = await supabase
+                        .from('accounts')
+                        .insert([payload]);
+                    if (error) throw error;
+                }
+                // Optional: refreshData() ensures consistency with backend ID triggers, etc.
+                // await refreshData(); 
+            } catch (error) {
+                console.error("Failed to save account to DB:", error);
+                alert("Saved locally, but failed to sync with database.");
             }
-            await refreshData();
-            setIsModalOpen(false);
-        } catch (error) {
-            console.error(error);
-            alert("Error saving account.");
         }
     };
 
     const handleDelete = async (id: string) => {
-        if (!isSupabaseConfigured || !supabase) {
-             alert("Database not connected.");
-             return;
-        }
-
         if (accounts.length <= 1) {
             alert("You must have at least one account.");
             return;
         }
+
         if (window.confirm('Are you sure you want to delete this account?')) {
-             try {
-                await supabase.from('accounts').delete().eq('id', id);
-                await refreshData();
-            } catch (error) {
-                console.error(error);
-                alert("Error deleting account. It might be referenced by transactions.");
+            // 1. Optimistic Delete
+            deleteLocalAccount(id);
+
+            // 2. DB Delete
+            if (isSupabaseConfigured && supabase) {
+                try {
+                    const { error } = await supabase.from('accounts').delete().eq('id', id);
+                    if (error) throw error;
+                } catch (error) {
+                    console.error("Failed to delete account from DB:", error);
+                    alert("Deleted locally, but failed to remove from database. It might be referenced by transactions.");
+                    await refreshData(); // Revert if failed
+                }
             }
         }
     };

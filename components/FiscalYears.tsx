@@ -1,24 +1,15 @@
 
 import React, { useState } from 'react';
-import Card, { CardHeader, CardTitle, CardContent } from './ui/Card';
+import Card from './ui/Card';
 import { TransactionType } from '../types';
 import { formatCurrency } from '../lib/utils';
-import { CalendarRange, Lock, Unlock, TrendingUp, TrendingDown, Eye, Landmark, Edit3, Save, AlertTriangle, FileText, CheckCircle, Calendar } from 'lucide-react';
+import { CalendarRange, Lock, Unlock, TrendingUp, TrendingDown, Landmark, Save, AlertTriangle, FileText, CheckCircle } from 'lucide-react';
 import Modal from './ui/Modal';
 import { useData } from '../lib/DataContext';
 
 const FiscalYears: React.FC = () => {
     // Consume Data
-    const { transactions } = useData();
-
-    // State to store manually entered balances. Key is the year, value is the balance amount.
-    const [manualBalances, setManualBalances] = useState<{[key: number]: number}>({});
-    
-    // State to store year statuses (Open/Closed). Default is empty (derived logic used if missing)
-    const [yearStatuses, setYearStatuses] = useState<{[key: number]: 'Open' | 'Closed'}>({});
-
-    // State to store notes for closing
-    const [closingNotes, setClosingNotes] = useState<{[key: number]: string}>({});
+    const { transactions, fiscalYearRecords, updateLocalFiscalYear } = useData();
 
     // Modal State
     const [isManageModalOpen, setIsManageModalOpen] = useState(false);
@@ -29,26 +20,34 @@ const FiscalYears: React.FC = () => {
     const [formBalance, setFormBalance] = useState('');
     const [formNotes, setFormNotes] = useState('');
 
-    // 1. Extract Years from data
-    const years = Array.from<number>(new Set(transactions.map(t => new Date(t.date).getFullYear()))).sort((a, b) => b - a);
+    // 1. Extract Years from data (Transactions + existing records)
+    const transactionYears = transactions.map(t => new Date(t.date).getFullYear());
+    const recordYears = fiscalYearRecords.map(r => r.year);
+    const allYears = Array.from(new Set([...transactionYears, ...recordYears, new Date().getFullYear()])).sort((a, b) => b - a);
 
-    // Helper to determine status (State > Default Logic)
+    // Helper to get record for year
+    const getRecord = (year: number) => fiscalYearRecords.find(r => r.year === year);
+
+    // Helper to determine status
     const getStatus = (year: number) => {
-        if (yearStatuses[year]) return yearStatuses[year];
+        const rec = getRecord(year);
+        if (rec) return rec.status;
         const currentYear = new Date().getFullYear();
-        return year === currentYear ? 'Open' : 'Closed';
+        return year === currentYear ? 'Open' : 'Closed'; // Default
     };
 
-    const handleOpenManageModal = (year: number, currentCalculatedBalance: number, currentStatus: 'Open' | 'Closed') => {
+    const handleOpenManageModal = (year: number, currentCalculatedBalance: number) => {
         setActiveYear(year);
-        setFormStatus(currentStatus);
+        const rec = getRecord(year);
+        
+        setFormStatus(rec ? rec.status : 'Open');
         
         // Pre-fill balance: Manual if exists, else System Calculated
-        const existingBalance = manualBalances[year] !== undefined ? manualBalances[year] : currentCalculatedBalance;
+        const existingBalance = (rec && rec.manualBalance !== undefined) ? rec.manualBalance : currentCalculatedBalance;
         setFormBalance(existingBalance.toString());
 
         // Pre-fill notes
-        setFormNotes(closingNotes[year] || '');
+        setFormNotes(rec ? (rec.notes || '') : '');
 
         setIsManageModalOpen(true);
     };
@@ -56,23 +55,18 @@ const FiscalYears: React.FC = () => {
     const handleSavePeriod = (e: React.FormEvent) => {
         e.preventDefault();
         if (activeYear !== null) {
-            // Update Status
-            setYearStatuses(prev => ({...prev, [activeYear]: formStatus}));
-
-            // Update Balance
-            if (formBalance !== '') {
-                setManualBalances(prev => ({...prev, [activeYear]: parseFloat(formBalance)}));
-            }
-
-            // Update Notes
-            setClosingNotes(prev => ({...prev, [activeYear]: formNotes}));
-
+            updateLocalFiscalYear({
+                year: activeYear,
+                status: formStatus,
+                manualBalance: formBalance !== '' ? parseFloat(formBalance) : undefined,
+                notes: formNotes
+            });
             setIsManageModalOpen(false);
         }
     };
 
     // 2. Calculate stats per year
-    const yearStats = years.map(year => {
+    const yearStats = allYears.map(year => {
         const yearTrans = transactions.filter(t => new Date(t.date).getFullYear() === year);
         
         const income = yearTrans
@@ -93,17 +87,15 @@ const FiscalYears: React.FC = () => {
                 return t.type === TransactionType.INCOME ? acc + t.amount : acc - t.amount;
             }, 0);
 
-        // Determine which balance to show
-        const displayBalance = manualBalances[year] !== undefined ? manualBalances[year] : systemCalculatedBalance;
-        const isManual = manualBalances[year] !== undefined;
-
-        const status = getStatus(year);
-        const notes = closingNotes[year];
+        const record = getRecord(year);
+        const displayBalance = (record && record.manualBalance !== undefined) ? record.manualBalance : systemCalculatedBalance;
+        const isManual = (record && record.manualBalance !== undefined);
+        const status = record ? record.status : getStatus(year);
+        const notes = record?.notes;
 
         return { year, income, expense, net, count, status, displayBalance, isManual, systemCalculatedBalance, notes };
     });
 
-    // Get the stats for the currently active year in the modal
     const activeStat = activeYear ? yearStats.find(s => s.year === activeYear) : null;
 
     return (
@@ -192,7 +184,7 @@ const FiscalYears: React.FC = () => {
                                     <div className="d-flex justify-content-end align-items-center gap-2">
                                         <button 
                                             className={`btn btn-sm d-flex align-items-center shadow-sm ${stat.status === 'Open' ? 'btn-outline-primary' : 'btn-outline-secondary'}`}
-                                            onClick={() => handleOpenManageModal(stat.year, stat.systemCalculatedBalance, stat.status)}
+                                            onClick={() => handleOpenManageModal(stat.year, stat.systemCalculatedBalance)}
                                         >
                                             {stat.status === 'Open' ? <Unlock size={16} className="me-2"/> : <Lock size={16} className="me-2"/>}
                                             {stat.status === 'Open' ? 'Manage Period' : 'Period Closed'}
