@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import Card, { CardContent } from './ui/Card';
 import { BankAccount } from '../types';
-import { PlusCircle, Search, Edit2, Trash2, Landmark, CreditCard, Wallet, Save, X } from 'lucide-react';
+import { PlusCircle, Search, Edit2, Trash2, Landmark, CreditCard, Wallet, Save, X, Building2 } from 'lucide-react';
 import Modal from './ui/Modal';
 import { formatCurrency } from '../lib/utils';
 import { useData } from '../lib/DataContext';
@@ -10,7 +10,7 @@ import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
 const BankAccounts: React.FC = () => {
     // Consume Data
-    const { accounts, refreshData } = useData();
+    const { accounts, refreshData, businessEntities } = useData();
 
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingAccount, setEditingAccount] = useState<BankAccount | null>(null);
@@ -20,7 +20,8 @@ const BankAccounts: React.FC = () => {
     const [formData, setFormData] = useState<Omit<BankAccount, 'id'>>({ 
         name: '', 
         type: 'Checking', 
-        initialBalance: 0 
+        initialBalance: 0,
+        businessEntityId: ''
     });
 
     const handleOpenModal = (account?: BankAccount) => {
@@ -29,14 +30,16 @@ const BankAccounts: React.FC = () => {
             setFormData({ 
                 name: account.name, 
                 type: account.type,
-                initialBalance: account.initialBalance
+                initialBalance: account.initialBalance,
+                businessEntityId: account.businessEntityId || ''
             });
         } else {
             setEditingAccount(null);
             setFormData({ 
                 name: '', 
                 type: 'Checking',
-                initialBalance: 0
+                initialBalance: 0,
+                businessEntityId: businessEntities.length > 0 ? businessEntities[0].id : ''
             });
         }
         setIsModalOpen(true);
@@ -46,30 +49,30 @@ const BankAccounts: React.FC = () => {
         e.preventDefault();
         
         if (!isSupabaseConfigured || !supabase) {
-             alert("Database not connected.");
+             alert("Database not connected (Demo Mode). Changes will revert on reload if not implemented locally.");
+             // For demo completeness we would implement addLocalAccount here, but relying on context refresh logic usually
              return;
         }
 
         try {
+            const payload = { 
+                name: formData.name, 
+                type: formData.type,
+                initial_balance: formData.initialBalance,
+                business_entity_id: formData.businessEntityId || null // New Field
+            };
+
             if (editingAccount) {
                 // Edit existing
                 await supabase
                     .from('accounts')
-                    .update({ 
-                        name: formData.name, 
-                        type: formData.type,
-                        initial_balance: formData.initialBalance
-                    })
+                    .update(payload)
                     .eq('id', editingAccount.id);
             } else {
                 // Add new
                 await supabase
                     .from('accounts')
-                    .insert([{ 
-                        name: formData.name, 
-                        type: formData.type,
-                        initial_balance: formData.initialBalance
-                    }]);
+                    .insert([payload]);
             }
             await refreshData();
             setIsModalOpen(false);
@@ -111,6 +114,12 @@ const BankAccounts: React.FC = () => {
             default: return <Landmark size={20} />;
         }
     };
+
+    const getEntityName = (id?: string) => {
+        if (!id) return 'Unassigned';
+        const entity = businessEntities.find(e => e.id === id);
+        return entity ? entity.name : 'Unknown Entity';
+    }
 
     return (
         <div className="mb-5">
@@ -170,7 +179,13 @@ const BankAccounts: React.FC = () => {
                                             </div>
                                             
                                             <h5 className="fw-bold text-dark mb-1">{acc.name}</h5>
-                                            <span className="badge bg-light text-secondary border mb-3">{acc.type}</span>
+                                            <span className="badge bg-light text-secondary border mb-3 me-2">{acc.type}</span>
+                                            
+                                            {/* Entity Badge */}
+                                            <span className="badge bg-info bg-opacity-10 text-info border border-info border-opacity-25 mb-3">
+                                                <Building2 size={10} className="me-1 mb-1" />
+                                                {getEntityName(acc.businessEntityId)}
+                                            </span>
                                             
                                             <div className="border-top pt-3 mt-2">
                                                 <small className="text-muted text-uppercase fw-bold" style={{fontSize: '0.7rem'}}>Initial Balance</small>
@@ -210,18 +225,35 @@ const BankAccounts: React.FC = () => {
                         />
                     </div>
 
-                    <div className="mb-3">
-                        <label htmlFor="type" className="form-label fw-bold small text-muted">Account Type</label>
-                        <select 
-                            id="type" 
-                            className="form-select"
-                            value={formData.type}
-                            onChange={e => setFormData({...formData, type: e.target.value as any})}
-                        >
-                            <option value="Checking">Checking</option>
-                            <option value="Savings">Savings</option>
-                            <option value="Credit Card">Credit Card</option>
-                        </select>
+                    <div className="row">
+                        <div className="col-md-6 mb-3">
+                            <label htmlFor="type" className="form-label fw-bold small text-muted">Account Type</label>
+                            <select 
+                                id="type" 
+                                className="form-select"
+                                value={formData.type}
+                                onChange={e => setFormData({...formData, type: e.target.value as any})}
+                            >
+                                <option value="Checking">Checking</option>
+                                <option value="Savings">Savings</option>
+                                <option value="Credit Card">Credit Card</option>
+                            </select>
+                        </div>
+                        <div className="col-md-6 mb-3">
+                             <label htmlFor="entity" className="form-label fw-bold small text-muted">Business Entity</label>
+                             <select 
+                                id="entity"
+                                className="form-select"
+                                value={formData.businessEntityId}
+                                onChange={e => setFormData({...formData, businessEntityId: e.target.value})}
+                                required
+                             >
+                                 <option value="">Select Entity...</option>
+                                 {businessEntities.map(ent => (
+                                     <option key={ent.id} value={ent.id}>{ent.name} ({ent.structure})</option>
+                                 ))}
+                             </select>
+                        </div>
                     </div>
 
                     <div className="mb-4">

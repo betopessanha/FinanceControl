@@ -1,5 +1,5 @@
 
-import { Transaction, Category, Truck, TransactionType, BankAccount } from '../types';
+import { Transaction, Category, Truck, TransactionType, BankAccount, BusinessEntity } from '../types';
 
 export const incomeCategories: Category[] = [
   { id: 'cat-inc-1', name: 'Freight Revenue', type: TransactionType.INCOME, isTaxDeductible: false },
@@ -35,10 +35,20 @@ export const trucks: Truck[] = [
   { id: 'truck-4', unitNumber: 'T-104', make: 'Volvo', model: 'VNL 860', year: 2022 },
 ];
 
+export const businessEntities: BusinessEntity[] = [
+    { 
+        id: 'ent-1', 
+        name: 'Speedy Haulers LLC', 
+        structure: 'LLC (Single Member)', 
+        taxForm: 'Schedule C (Form 1040)',
+        ein: '12-3456789'
+    }
+];
+
 export const accounts: BankAccount[] = [
-    { id: 'acc-1', name: 'Chase Business Checking', type: 'Checking', initialBalance: 25000 },
-    { id: 'acc-2', name: 'Amex Business Gold', type: 'Credit Card', initialBalance: 0 },
-    { id: 'acc-3', name: 'Business Savings', type: 'Savings', initialBalance: 50000 },
+    { id: 'acc-1', name: 'Chase Business Checking', type: 'Checking', initialBalance: 25000, businessEntityId: 'ent-1' },
+    { id: 'acc-2', name: 'Amex Business Gold', type: 'Credit Card', initialBalance: 0, businessEntityId: 'ent-1' },
+    { id: 'acc-3', name: 'Business Savings', type: 'Savings', initialBalance: 50000, businessEntityId: 'ent-1' },
 ];
 
 const generateRandomDate = (start: Date, end: Date) => {

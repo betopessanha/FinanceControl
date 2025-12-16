@@ -1,7 +1,7 @@
 
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { Transaction, Category, Truck, BankAccount, TransactionType } from '../types';
-import { mockTransactions, allCategories, trucks as mockTrucks, accounts as mockAccounts } from './mockData';
+import { Transaction, Category, Truck, BankAccount, TransactionType, BusinessEntity } from '../types';
+import { mockTransactions, allCategories, trucks as mockTrucks, accounts as mockAccounts, businessEntities as mockEntities } from './mockData';
 import { supabase, isSupabaseConfigured } from './supabase';
 
 export interface ReportFilter {
@@ -15,6 +15,7 @@ interface DataContextType {
     categories: Category[];
     trucks: Truck[];
     accounts: BankAccount[];
+    businessEntities: BusinessEntity[]; // New
     loading: boolean;
     refreshData: () => Promise<void>;
     
@@ -38,6 +39,11 @@ interface DataContextType {
     addLocalTruck: (t: Truck) => void;
     updateLocalTruck: (t: Truck) => void;
     deleteLocalTruck: (id: string) => void;
+
+    // Methods for Business Entities
+    addLocalEntity: (e: BusinessEntity) => void;
+    updateLocalEntity: (e: BusinessEntity) => void;
+    deleteLocalEntity: (id: string) => void;
 }
 
 const DataContext = createContext<DataContextType>({
@@ -45,6 +51,7 @@ const DataContext = createContext<DataContextType>({
     categories: [],
     trucks: [],
     accounts: [],
+    businessEntities: [],
     loading: true,
     refreshData: async () => {},
     reportFilter: null,
@@ -54,12 +61,15 @@ const DataContext = createContext<DataContextType>({
     deleteLocalTransaction: () => {},
     deleteLocalTransactions: () => {},
     addLocalCategory: () => {},
-    addLocalCategories: () => {}, // Init placeholder
+    addLocalCategories: () => {}, 
     updateLocalCategory: () => {},
     deleteLocalCategory: () => {},
     addLocalTruck: () => {},
     updateLocalTruck: () => {},
     deleteLocalTruck: () => {},
+    addLocalEntity: () => {},
+    updateLocalEntity: () => {},
+    deleteLocalEntity: () => {},
 });
 
 export const useData = () => useContext(DataContext);
@@ -69,11 +79,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const [categories, setCategories] = useState<Category[]>([]);
     const [trucks, setTrucks] = useState<Truck[]>([]);
     const [accounts, setAccounts] = useState<BankAccount[]>([]);
+    const [businessEntities, setBusinessEntities] = useState<BusinessEntity[]>([]);
     const [loading, setLoading] = useState(true);
     const [reportFilter, setReportFilter] = useState<ReportFilter | null>(null);
 
     // --- Local Storage Helpers for Tax Settings (Hybrid Persistence) ---
-    // This ensures user settings persist locally even if the DB column is missing
     const getLocalTaxOverride = (catId: string): boolean | undefined => {
         try {
             const stored = localStorage.getItem('tax_deductible_overrides');
@@ -93,23 +103,43 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     // ------------------------------------------------------------------
 
+    // --- Local Storage Helpers for Business Entities (Simulate DB) ---
+    const getStoredEntities = (): BusinessEntity[] => {
+        try {
+            const stored = localStorage.getItem('business_entities_local');
+            return stored ? JSON.parse(stored) : mockEntities;
+        } catch { return mockEntities; }
+    }
+
+    const saveStoredEntities = (entities: BusinessEntity[]) => {
+        localStorage.setItem('business_entities_local', JSON.stringify(entities));
+    }
+    // ------------------------------------------------------------------
+
     const fetchData = async () => {
         setLoading(true);
         
+        // Load Entities Local First (Mock DB behavior for this feature)
+        const entities = getStoredEntities();
+        setBusinessEntities(entities);
+
         if (!isSupabaseConfigured || !supabase) {
             console.warn("Supabase not configured. Using Mock Data.");
             setTransactions(mockTransactions);
-            // Only set categories if we haven't modified them locally yet (simple check)
             if (categories.length === 0) setCategories(allCategories);
             if (trucks.length === 0) setTrucks(mockTrucks);
-            setAccounts(mockAccounts);
+            // Link mock accounts to the first entity if available and not set
+            const accountsWithEntity = mockAccounts.map(a => ({
+                ...a,
+                businessEntityId: a.businessEntityId || (entities.length > 0 ? entities[0].id : undefined)
+            }));
+            setAccounts(accountsWithEntity);
             setLoading(false);
             return;
         }
 
         try {
             // 1. Fetch Static Data
-            // IMPORTANT: Check for errors! If auth fails (e.g. bad key), 'error' is populated and 'data' is null.
             const { data: catData, error: catError } = await supabase.from('categories').select('*');
             if (catError) throw catError;
 
@@ -120,15 +150,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             if (accError) throw accError;
 
             if (catData) setCategories(catData.map((c: any) => {
-                // Determine Tax Deductibility:
-                // 1. Check Local Storage Override (Highest Priority - handles missing DB column case)
                 const localVal = getLocalTaxOverride(c.id);
-                
-                // 2. Check DB Value
                 const dbVal = c.is_tax_deductible;
-
-                // 3. Default Logic
-                let finalVal = true; // Default
+                let finalVal = true;
                 if (localVal !== undefined) finalVal = localVal;
                 else if (dbVal !== undefined) finalVal = dbVal;
                 else finalVal = (c.type === 'Expense');
@@ -141,7 +165,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             }));
             
             if (truckData) setTrucks(truckData.map((t: any) => ({ ...t, unitNumber: t.unit_number })));
-            if (accData) setAccounts(accData.map((a: any) => ({ ...a, initialBalance: a.initial_balance })));
+            if (accData) setAccounts(accData.map((a: any) => ({ 
+                ...a, 
+                initialBalance: a.initial_balance,
+                businessEntityId: a.business_entity_id // Map DB column to type
+            })));
 
             // 2. Fetch Transactions with Joins
             const { data: transData, error } = await supabase
@@ -157,7 +185,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
             if (transData) {
                 const formattedTransactions: Transaction[] = transData.map((t: any) => {
-                    // Resolve Category Tax Status for Transaction
                     let catIsTaxDeductible = true;
                     if (t.categories) {
                         const localVal = getLocalTaxOverride(t.categories.id);
@@ -175,7 +202,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
                         accountId: t.account_id,
                         toAccountId: t.to_account_id,
                         receipts: t.receipts || [],
-                        // Map joined relations to objects matching our interfaces
                         category: t.categories ? { 
                             id: t.categories.id, 
                             name: t.categories.name, 
@@ -195,12 +221,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             }
 
         } catch (error: any) {
-            console.error("Error fetching data from Supabase (falling back to Mock Data):", error);
+            console.error("Error fetching data from Supabase:", error);
             
-            // ALERT THE USER if they thought they were connected
-            alert(`Failed to connect to Supabase database. \n\nError: ${error.message || 'Unknown Network Error'}\n\nFalling back to local demo mode. Please check your API URL and Key.`);
-
-            // Fallback just in case of query error
+            // Fallback
             if (categories.length === 0) setCategories(allCategories);
             if (trucks.length === 0) setTrucks(mockTrucks);
             if (transactions.length === 0) setTransactions(mockTransactions);
@@ -210,7 +233,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
     };
 
-    // Helper functions to update state immediately without waiting for re-fetch
+    // Helper functions
     const addLocalTransaction = (t: Transaction) => {
         setTransactions(prev => [t, ...prev].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
     };
@@ -223,18 +246,15 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setTransactions(prev => prev.filter(item => item.id !== id));
     };
     
-    // NEW: Bulk delete function
     const deleteLocalTransactions = (ids: string[]) => {
         setTransactions(prev => prev.filter(item => !ids.includes(item.id)));
     };
 
-    // Category Local Helpers
     const addLocalCategory = (c: Category) => {
         if (c.isTaxDeductible !== undefined) setLocalTaxOverride(c.id, c.isTaxDeductible);
         setCategories(prev => [...prev, c]);
     };
 
-    // NEW: Bulk add categories
     const addLocalCategories = (newCategories: Category[]) => {
         newCategories.forEach(c => {
             if (c.isTaxDeductible !== undefined) setLocalTaxOverride(c.id, c.isTaxDeductible);
@@ -251,7 +271,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setCategories(prev => prev.filter(item => item.id !== id));
     };
 
-    // Truck Local Helpers
     const addLocalTruck = (t: Truck) => {
         setTrucks(prev => [...prev, t]);
     };
@@ -264,17 +283,37 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setTrucks(prev => prev.filter(item => item.id !== id));
     };
 
+    // --- Entity Helpers (Local Persistence only for now) ---
+    const addLocalEntity = (e: BusinessEntity) => {
+        const updated = [...businessEntities, e];
+        setBusinessEntities(updated);
+        saveStoredEntities(updated);
+    };
+
+    const updateLocalEntity = (e: BusinessEntity) => {
+        const updated = businessEntities.map(item => item.id === e.id ? e : item);
+        setBusinessEntities(updated);
+        saveStoredEntities(updated);
+    };
+
+    const deleteLocalEntity = (id: string) => {
+        const updated = businessEntities.filter(item => item.id !== id);
+        setBusinessEntities(updated);
+        saveStoredEntities(updated);
+    };
+
     useEffect(() => {
         fetchData();
     }, []);
 
     return (
         <DataContext.Provider value={{ 
-            transactions, categories, trucks, accounts, loading, refreshData: fetchData, 
+            transactions, categories, trucks, accounts, businessEntities, loading, refreshData: fetchData, 
             reportFilter, setReportFilter,
             addLocalTransaction, updateLocalTransaction, deleteLocalTransaction, deleteLocalTransactions,
             addLocalCategory, addLocalCategories, updateLocalCategory, deleteLocalCategory,
-            addLocalTruck, updateLocalTruck, deleteLocalTruck
+            addLocalTruck, updateLocalTruck, deleteLocalTruck,
+            addLocalEntity, updateLocalEntity, deleteLocalEntity
         }}>
             {children}
         </DataContext.Provider>

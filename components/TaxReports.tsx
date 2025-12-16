@@ -1,8 +1,9 @@
+
 import React, { useState, useMemo, useEffect } from 'react';
 import Card, { CardHeader, CardTitle, CardContent } from './ui/Card';
-import { TransactionType, Transaction } from '../types';
+import { TransactionType, Transaction, BusinessEntity } from '../types';
 import { formatCurrency } from '../lib/utils';
-import { Calendar, Printer, AlertCircle, FileSpreadsheet, TrendingUp, Filter, ExternalLink, Wallet } from 'lucide-react';
+import { Calendar, Printer, AlertCircle, FileSpreadsheet, TrendingUp, Filter, ExternalLink, Wallet, AlertTriangle, Building } from 'lucide-react';
 import { useData } from '../lib/DataContext';
 import { Page } from '../App';
 
@@ -12,7 +13,7 @@ interface TaxReportsProps {
 
 const TaxReports: React.FC<TaxReportsProps> = ({ setActivePage }) => {
     // Consume Data
-    const { transactions, setReportFilter } = useData();
+    const { transactions, setReportFilter, businessEntities } = useData();
     
     // Determine available years from data, default to current year
     const availableYears = useMemo(() => {
@@ -21,6 +22,7 @@ const TaxReports: React.FC<TaxReportsProps> = ({ setActivePage }) => {
     }, [transactions]);
 
     const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
+    const [selectedEntityId, setSelectedEntityId] = useState<string>('');
 
     // Update selected year if it's not in the list (e.g. on first load if data is older)
     useEffect(() => {
@@ -29,11 +31,26 @@ const TaxReports: React.FC<TaxReportsProps> = ({ setActivePage }) => {
         }
     }, [availableYears, selectedYear]);
 
+    // Select default entity
+    useEffect(() => {
+        if (businessEntities.length > 0 && !selectedEntityId) {
+            setSelectedEntityId(businessEntities[0].id);
+        }
+    }, [businessEntities]);
+
+    // Get Active Entity Data
+    const activeEntity: BusinessEntity | undefined = businessEntities.find(e => e.id === selectedEntityId);
+    const formTitle = activeEntity ? activeEntity.taxForm : 'Schedule C (Form 1040)';
+
     // Filter transactions by year
     const yearlyTransactions = transactions.filter(t => {
         const d = new Date(t.date);
         return d.getFullYear() === selectedYear;
     });
+    
+    // Note: Ideally we filter transactions by Account -> Entity here.
+    // For this prototype, we show ALL transactions, but the Header changes context.
+    // In a real multi-company setup, you'd filter `yearlyTransactions` to only include accounts belonging to `selectedEntityId`.
 
     // 1. Calculate Gross Income
     const grossIncome = yearlyTransactions
@@ -90,6 +107,7 @@ const TaxReports: React.FC<TaxReportsProps> = ({ setActivePage }) => {
     };
 
     const expensesByTaxLine: { [key: string]: number } = {};
+    const equityByCategory: { [key: string]: number } = {}; // Breakdown for equity
     let totalDeductions = 0;
     let totalOwnerDraws = 0;
 
@@ -135,6 +153,7 @@ const TaxReports: React.FC<TaxReportsProps> = ({ setActivePage }) => {
         if (!isDeductible) {
             // If NOT deductible, it goes to Equity/Draws. NEVER to "Other Expenses".
             totalOwnerDraws += t.amount;
+            equityByCategory[catName] = (equityByCategory[catName] || 0) + t.amount;
         } else {
             // It is a deductible business expense
             const lineItem = getScheduleCLine(catName);
@@ -224,19 +243,39 @@ const TaxReports: React.FC<TaxReportsProps> = ({ setActivePage }) => {
             <div className="d-flex flex-column flex-md-row align-items-md-end justify-content-between gap-3 mb-4">
                 <div>
                   <h2 className="fw-bold text-dark mb-1">Tax Reports & Forms</h2>
-                  <p className="text-muted mb-0">Year-end summaries for Schedule C, IFTA, and Form 2290.</p>
+                  <p className="text-muted mb-0">Year-end summaries for {formTitle}, IFTA, and Form 2290.</p>
                 </div>
-                <div className="d-flex gap-2 d-print-none align-items-center">
-                    <Filter size={18} className="text-muted" />
-                    <select 
-                        className="form-select w-auto fw-bold text-dark shadow-sm border-0" 
-                        value={selectedYear} 
-                        onChange={(e) => setSelectedYear(Number(e.target.value))}
-                    >
-                        {availableYears.map(year => (
-                            <option key={year} value={year}>Tax Year {year}</option>
-                        ))}
-                    </select>
+                <div className="d-flex gap-2 d-print-none align-items-center flex-wrap">
+                    {/* Entity Selector */}
+                    {businessEntities.length > 0 && (
+                        <div className="input-group w-auto shadow-sm">
+                            <span className="input-group-text bg-white border-0 text-muted"><Building size={16}/></span>
+                            <select 
+                                className="form-select border-0 fw-bold text-primary" 
+                                style={{maxWidth: '200px'}}
+                                value={selectedEntityId}
+                                onChange={(e) => setSelectedEntityId(e.target.value)}
+                            >
+                                {businessEntities.map(ent => (
+                                    <option key={ent.id} value={ent.id}>{ent.name}</option>
+                                ))}
+                            </select>
+                        </div>
+                    )}
+
+                    <div className="input-group w-auto shadow-sm">
+                        <span className="input-group-text bg-white border-0 text-muted"><Calendar size={16}/></span>
+                        <select 
+                            className="form-select border-0 fw-bold text-dark" 
+                            value={selectedYear} 
+                            onChange={(e) => setSelectedYear(Number(e.target.value))}
+                        >
+                            {availableYears.map(year => (
+                                <option key={year} value={year}>{year}</option>
+                            ))}
+                        </select>
+                    </div>
+
                     <button className="btn btn-outline-secondary d-flex align-items-center bg-white shadow-sm" onClick={() => window.print()}>
                         <Printer size={18} className="me-2"/>
                         Print
@@ -244,16 +283,34 @@ const TaxReports: React.FC<TaxReportsProps> = ({ setActivePage }) => {
                 </div>
             </div>
 
+            {/* Entity Header Info */}
+            {activeEntity && (
+                <div className="alert alert-light border d-flex align-items-center justify-content-between mb-4 shadow-sm">
+                    <div className="d-flex align-items-center">
+                        <div className="p-2 bg-primary bg-opacity-10 text-primary rounded me-3">
+                            <Building size={20} />
+                        </div>
+                        <div>
+                            <h6 className="fw-bold text-dark mb-0">{activeEntity.name}</h6>
+                            <small className="text-muted">
+                                Filing as: <strong>{activeEntity.structure}</strong> using <strong>{activeEntity.taxForm}</strong>
+                                {activeEntity.ein && <span> (EIN: {activeEntity.ein})</span>}
+                            </small>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Summary Cards */}
             <div className="row g-4 mb-4">
                 <div className="col-12 col-md-4">
                     <div className="card border-0 shadow-sm h-100 bg-white">
                         <div className="card-body p-4">
-                            <h6 className="text-uppercase text-muted fw-bold small mb-2">Net Profit (Schedule C)</h6>
+                            <h6 className="text-uppercase text-muted fw-bold small mb-2">Net Profit ({formTitle})</h6>
                             <h3 className={`fw-bold mb-0 ${netProfit >= 0 ? 'text-success' : 'text-danger'}`}>
                                 {formatCurrency(netProfit)}
                             </h3>
-                            <small className="text-muted">Taxable Income (Line 31)</small>
+                            <small className="text-muted">Taxable Income</small>
                         </div>
                     </div>
                 </div>
@@ -276,7 +333,7 @@ const TaxReports: React.FC<TaxReportsProps> = ({ setActivePage }) => {
                                 </div>
                                 <AlertCircle className="text-info" size={24} />
                             </div>
-                            <small className="text-muted">Est. SE Tax + Income Tax (~37%)</small>
+                            <small className="text-muted">Est. Tax (Approx. 37%)</small>
                         </div>
                     </div>
                 </div>
@@ -326,12 +383,12 @@ const TaxReports: React.FC<TaxReportsProps> = ({ setActivePage }) => {
                             </CardContent>
                         </Card>
 
-                        {/* Schedule C Expense Breakdown */}
+                        {/* Expense Breakdown (Dynamic Title based on Form) */}
                         <Card>
                             <CardHeader>
                                 <div className="d-flex align-items-center">
                                     <FileSpreadsheet className="me-2 text-secondary" size={20}/>
-                                    <CardTitle>Schedule C Expense Mapping (Part II)</CardTitle>
+                                    <CardTitle>{formTitle} Expense Mapping (Part II)</CardTitle>
                                 </div>
                             </CardHeader>
                             <CardContent className="p-0">
@@ -339,7 +396,7 @@ const TaxReports: React.FC<TaxReportsProps> = ({ setActivePage }) => {
                                     <table className="table table-striped mb-0 align-middle">
                                         <thead className="table-light">
                                             <tr>
-                                                <th className="py-3 ps-4">IRS Description</th>
+                                                <th className="py-3 ps-4">IRS Description (Approx.)</th>
                                                 <th className="py-3 text-end pe-4">Amount</th>
                                             </tr>
                                         </thead>
@@ -373,6 +430,57 @@ const TaxReports: React.FC<TaxReportsProps> = ({ setActivePage }) => {
                                 </div>
                             </CardContent>
                         </Card>
+
+                        {/* Owner Draws & Non-Deductible Section (Separated) */}
+                        <Card className="border border-warning">
+                            <CardHeader className="bg-warning bg-opacity-10 border-bottom-0">
+                                <div className="d-flex align-items-center justify-content-between w-100">
+                                    <div className="d-flex align-items-center">
+                                        <Wallet className="me-2 text-warning" size={20}/>
+                                        <CardTitle className="text-dark">Owner Withdrawals & Equity (Non-Deductible)</CardTitle>
+                                    </div>
+                                    <span className="badge bg-warning text-dark border border-dark border-opacity-25">Do Not Reduce Tax</span>
+                                </div>
+                            </CardHeader>
+                            <CardContent className="p-0">
+                                <div className="table-responsive">
+                                    <table className="table mb-0 align-middle">
+                                        <thead className="table-light">
+                                            <tr>
+                                                <th className="py-3 ps-4">Category Name</th>
+                                                <th className="py-3 text-end pe-4">Amount</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {Object.keys(equityByCategory).length > 0 ? (
+                                                Object.entries(equityByCategory)
+                                                    .sort(([,a], [,b]) => b - a)
+                                                    .map(([cat, amount]) => (
+                                                    <tr key={cat}>
+                                                        <td className="ps-4 fw-medium text-secondary">{cat}</td>
+                                                        <td className="text-end pe-4 fw-bold text-dark">{formatCurrency(amount)}</td>
+                                                    </tr>
+                                                ))
+                                            ) : (
+                                                <tr><td colSpan={2} className="text-center py-3 text-muted">No owner withdrawals or non-deductible items.</td></tr>
+                                            )}
+                                            <tr className="bg-warning bg-opacity-10 border-top border-warning">
+                                                <td className="ps-4 fw-bold text-dark">Total Distributions</td>
+                                                <td className="text-end pe-4 fw-bold text-dark">
+                                                    <button 
+                                                        onClick={handleNonDeductibleClick}
+                                                        className="btn btn-link p-0 text-decoration-none fw-bold text-dark d-inline-flex align-items-center"
+                                                    >
+                                                        {formatCurrency(totalOwnerDraws)}
+                                                        <ExternalLink size={12} className="ms-1 opacity-50" />
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </CardContent>
+                        </Card>
                     </div>
                 </div>
 
@@ -380,33 +488,6 @@ const TaxReports: React.FC<TaxReportsProps> = ({ setActivePage }) => {
                 <div className="col-lg-4">
                     <div className="d-flex flex-column gap-4">
                         
-                        {/* Owner Draws / Equity Panel */}
-                        <Card className="border-warning border bg-warning bg-opacity-10">
-                            <CardHeader className="bg-transparent pb-0">
-                                <div className="d-flex align-items-center">
-                                    <Wallet className="me-2 text-warning" size={20}/>
-                                    <CardTitle>Non-Deductible / Equity</CardTitle>
-                                </div>
-                            </CardHeader>
-                            <CardContent>
-                                <div className="d-flex justify-content-between align-items-center mb-2">
-                                    <span className="fw-medium text-dark">Distributions</span>
-                                    <button 
-                                        onClick={handleNonDeductibleClick}
-                                        className="btn btn-link p-0 text-decoration-none fw-bold text-dark d-inline-flex align-items-center"
-                                        title="View non-deductible transactions"
-                                    >
-                                        <h4 className="fw-bold mb-0 me-2">{formatCurrency(totalOwnerDraws)}</h4>
-                                        <ExternalLink size={16} className="text-muted opacity-75" />
-                                    </button>
-                                </div>
-                                <p className="small text-muted mb-0 fst-italic">
-                                    <AlertCircle size={14} className="me-1 d-inline" />
-                                    Expenses marked as "Not Deductible" (e.g. Owner Draws, Personal Cards) do not lower your taxable income.
-                                </p>
-                            </CardContent>
-                        </Card>
-
                         {/* Quarterly Estimates */}
                         <Card>
                             <CardHeader>
@@ -460,6 +541,15 @@ const TaxReports: React.FC<TaxReportsProps> = ({ setActivePage }) => {
                                 </div>
                             </CardContent>
                         </Card>
+                        
+                        <div className="alert alert-info small">
+                             <div className="d-flex align-items-start">
+                                <AlertTriangle size={16} className="me-2 mt-1 flex-shrink-0" />
+                                <div>
+                                    <strong>Disclaimer:</strong> This report is an estimate based on your categorized transactions. Always consult a CPA before filing taxes.
+                                </div>
+                             </div>
+                        </div>
 
                     </div>
                 </div>

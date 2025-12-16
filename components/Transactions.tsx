@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import Card, { CardContent } from './ui/Card';
 import { Transaction, TransactionType, Category, BankAccount } from '../types';
 import { formatCurrency, formatDate } from '../lib/utils';
-import { PlusCircle, Search, Filter, MoreHorizontal, ArrowDownCircle, ArrowUpCircle, Paperclip, Upload, X, Edit2, Sparkles, Loader2, Calendar, Wallet, ArrowRightLeft, ArrowRight, FileSpreadsheet, Check, UploadCloud, AlertTriangle, Trash2, Save, FileClock, CheckCircle2 } from 'lucide-react';
+import { PlusCircle, Search, Filter, MoreHorizontal, ArrowDownCircle, ArrowUpCircle, Paperclip, Upload, X, Edit2, Sparkles, Loader2, Calendar, Wallet, ArrowRightLeft, ArrowRight, FileSpreadsheet, Check, UploadCloud, AlertTriangle, Trash2, Save, FileClock, CheckCircle2, ArrowDown, ArrowUp, Info } from 'lucide-react';
 import Modal from './ui/Modal';
 import { GoogleGenAI, Type } from "@google/genai";
 import { useData } from '../lib/DataContext';
@@ -34,6 +34,10 @@ const TransactionFormModal: React.FC<TransactionFormModalProps> = ({ isOpen, onC
     const [receipts, setReceipts] = useState<string[]>([]);
     const [newReceiptUrl, setNewReceiptUrl] = useState('');
 
+    // AI State
+    const [isAnalyzing, setIsAnalyzing] = useState(false);
+    const [aiSuggestion, setAiSuggestion] = useState<string | null>(null);
+
     useEffect(() => {
         if (initialData) {
             setDate(new Date(initialData.date).toISOString().split('T')[0]);
@@ -57,6 +61,7 @@ const TransactionFormModal: React.FC<TransactionFormModalProps> = ({ isOpen, onC
             setTruckId('');
             setReceipts([]);
         }
+        setAiSuggestion(null);
     }, [initialData, isOpen, accounts]);
 
     const handleSubmit = (e: React.FormEvent) => {
@@ -98,6 +103,68 @@ const TransactionFormModal: React.FC<TransactionFormModalProps> = ({ isOpen, onC
         if (newReceiptUrl) {
             setReceipts([...receipts, newReceiptUrl]);
             setNewReceiptUrl('');
+        }
+    };
+
+    // AI Categorization Handler
+    const handleAiCategorize = async () => {
+        if (!description.trim()) {
+            alert("Please enter a description first.");
+            return;
+        }
+        
+        setIsAnalyzing(true);
+        setAiSuggestion(null);
+
+        try {
+            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+            
+            // Filter categories to only show relevant ones (Income or Expense based on current type)
+            const availableCategories = categories.filter(c => c.type === type);
+            const categoryNames = availableCategories.map(c => c.name);
+
+            const prompt = `
+                I have a transaction description: "${description}".
+                I need to assign it to one of the following categories: ${JSON.stringify(categoryNames)}.
+                
+                Analyze the description keywords. Return the exact name of the best matching category.
+                If no category fits well, return "null".
+            `;
+
+            const response = await ai.models.generateContent({
+                model: 'gemini-2.5-flash',
+                contents: prompt,
+                config: {
+                    responseMimeType: 'application/json',
+                    responseSchema: {
+                        type: Type.OBJECT,
+                        properties: {
+                            categoryName: { type: Type.STRING, description: "The exact name of the matching category from the list provided." },
+                            reason: { type: Type.STRING, description: "Short reason for the match." }
+                        }
+                    }
+                }
+            });
+
+            const result = JSON.parse(response.text || '{}');
+            
+            if (result.categoryName) {
+                const match = availableCategories.find(c => c.name.toLowerCase() === result.categoryName.toLowerCase());
+                if (match) {
+                    setCategoryId(match.id);
+                    setAiSuggestion(`Auto-selected: ${match.name} (${result.reason})`);
+                } else {
+                    setAiSuggestion("Could not confidently match a category.");
+                }
+            } else {
+                setAiSuggestion("No suitable category found.");
+            }
+
+        } catch (error) {
+            console.error("AI Error:", error);
+            setAiSuggestion("AI service unavailable.");
+        } finally {
+            setIsAnalyzing(false);
         }
     };
 
@@ -158,14 +225,34 @@ const TransactionFormModal: React.FC<TransactionFormModalProps> = ({ isOpen, onC
 
                     <div className="col-12">
                         <label className="form-label fw-bold small text-muted">Description</label>
-                        <input 
-                            type="text" 
-                            className="form-control" 
-                            value={description} 
-                            onChange={e => setDescription(e.target.value)} 
-                            placeholder="e.g. Fuel at Love's" 
-                            required 
-                        />
+                        <div className="input-group">
+                            <input 
+                                type="text" 
+                                className="form-control" 
+                                value={description} 
+                                onChange={e => setDescription(e.target.value)} 
+                                placeholder="e.g. Fuel at Love's #342" 
+                                required 
+                            />
+                            {type !== TransactionType.TRANSFER && (
+                                <button 
+                                    type="button" 
+                                    className="btn btn-outline-primary d-flex align-items-center"
+                                    onClick={handleAiCategorize}
+                                    disabled={isAnalyzing || !description}
+                                    title="Auto-Categorize based on description"
+                                >
+                                    {isAnalyzing ? <Loader2 size={16} className="animate-spin me-1"/> : <Sparkles size={16} className="me-1"/>}
+                                    AI Suggest
+                                </button>
+                            )}
+                        </div>
+                        {aiSuggestion && (
+                            <div className="form-text text-info d-flex align-items-center mt-1">
+                                <Info size={12} className="me-1" />
+                                {aiSuggestion}
+                            </div>
+                        )}
                     </div>
 
                     {/* Conditional Fields based on Type */}
@@ -200,15 +287,17 @@ const TransactionFormModal: React.FC<TransactionFormModalProps> = ({ isOpen, onC
                         <>
                             <div className="col-md-6">
                                 <label className="form-label fw-bold small text-muted">Category</label>
-                                <select 
-                                    className="form-select" 
-                                    value={categoryId} 
-                                    onChange={e => setCategoryId(e.target.value)} 
-                                    required
-                                >
-                                    <option value="">Select Category</option>
-                                    {filteredCategories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                                </select>
+                                <div className="input-group">
+                                    <select 
+                                        className="form-select" 
+                                        value={categoryId} 
+                                        onChange={e => setCategoryId(e.target.value)} 
+                                        required
+                                    >
+                                        <option value="">Select Category</option>
+                                        {filteredCategories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                    </select>
+                                </div>
                             </div>
                             <div className="col-md-6">
                                 <label className="form-label fw-bold small text-muted">Account</label>
@@ -818,14 +907,18 @@ const Transactions: React.FC = () => {
     const [selectedYear, setSelectedYear] = useState<string>('All');
     const [selectedAccount, setSelectedAccount] = useState<string>('All');
     
+    // Sort Order State
+    const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+
     // Additional local filter state for Category Drilling from Reports
     const [filterCategories, setFilterCategories] = useState<string[] | null>(null);
 
     // Selection State
     const [selectedIds, setSelectedIds] = useState<string[]>([]);
     
-    // Delete Confirmation State
+    // Delete State
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+    const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
 
     // Modal States
     const [isFormModalOpen, setIsFormModalOpen] = useState(false);
@@ -971,10 +1064,10 @@ const Transactions: React.FC = () => {
         setIsFormModalOpen(true);
     };
 
+    // Modified to use Modal
     const handleDeleteSingleClick = (id: string) => {
-        if (window.confirm("Are you sure you want to delete this transaction?")) {
-            handleTransactionDelete(id);
-        }
+        setDeleteTargetId(id);
+        setIsDeleteModalOpen(true);
     }
 
     // Filter AND Sort transactions by date descending
@@ -1007,7 +1100,14 @@ const Transactions: React.FC = () => {
             return matchesSearch && matchesYear && matchesAccount && matchesReportCategory;
         })
         .sort((a: Transaction, b: Transaction) => {
-            return new Date(b.date).valueOf() - new Date(a.date).valueOf();
+            const dateA = new Date(a.date).valueOf();
+            const dateB = new Date(b.date).valueOf();
+            
+            if (sortOrder === 'desc') {
+                return dateB - dateA; // Descending (Newest first)
+            } else {
+                return dateA - dateB; // Ascending (Oldest first)
+            }
         });
 
     // --- Batch Selection Handlers ---
@@ -1031,34 +1131,40 @@ const Transactions: React.FC = () => {
     // Open Modal
     const handleBatchDeleteClick = () => {
         if (selectedIds.length === 0) return;
+        setDeleteTargetId(null);
         setIsDeleteModalOpen(true);
     };
 
-    // Actual Logic
-    const confirmBatchDelete = async () => {
+    // Unified Confirm Logic
+    const handleConfirmDelete = async () => {
         setIsDeleteModalOpen(false);
 
-        // 1. Optimistic Update (Local)
-        if (deleteLocalTransactions) {
-            deleteLocalTransactions(selectedIds);
+        if (deleteTargetId) {
+            // Single Delete
+            await handleTransactionDelete(deleteTargetId);
+            setDeleteTargetId(null);
         } else {
-            selectedIds.forEach(id => deleteLocalTransaction(id));
-        }
+            // Batch Delete
+            // 1. Optimistic Update (Local)
+            if (deleteLocalTransactions) {
+                deleteLocalTransactions(selectedIds);
+            } else {
+                selectedIds.forEach(id => deleteLocalTransaction(id));
+            }
 
-        // CRITICAL: Clear selection immediately so UI updates
-        const idsToDelete = [...selectedIds];
-        setSelectedIds([]);
+            // CRITICAL: Clear selection immediately so UI updates
+            const idsToDelete = [...selectedIds];
+            setSelectedIds([]);
 
-        // 2. Database Delete
-        if (isSupabaseConfigured && supabase) {
-            try {
-                const { error } = await supabase.from('transactions').delete().in('id', idsToDelete);
-                if (error) throw error;
-            } catch (e) {
-                console.error("Batch delete failed", e);
-                // Note: We don't rollback simply here for UX reasons, but we alert.
-                // In a production app, we might want to revert the local state or show a toast.
-                alert("Failed to sync deletion with database. Please refresh.");
+            // 2. Database Delete
+            if (isSupabaseConfigured && supabase) {
+                try {
+                    const { error } = await supabase.from('transactions').delete().in('id', idsToDelete);
+                    if (error) throw error;
+                } catch (e) {
+                    console.error("Batch delete failed", e);
+                    alert("Failed to sync deletion with database. Please refresh.");
+                }
             }
         }
     };
@@ -1189,7 +1295,16 @@ const Transactions: React.FC = () => {
                                             onChange={handleSelectAll}
                                         />
                                     </th>
-                                    <th className="text-secondary small text-uppercase py-3">Date</th>
+                                    <th 
+                                        className="text-secondary small text-uppercase py-3" 
+                                        style={{cursor: 'pointer', userSelect: 'none'}} 
+                                        onClick={() => setSortOrder(prev => prev === 'desc' ? 'asc' : 'desc')}
+                                    >
+                                        <div className="d-flex align-items-center gap-1">
+                                            Date
+                                            {sortOrder === 'desc' ? <ArrowDown size={14} className="text-dark"/> : <ArrowUp size={14} className="text-dark"/>}
+                                        </div>
+                                    </th>
                                     <th className="text-secondary small text-uppercase py-3">Description</th>
                                     <th className="text-secondary small text-uppercase py-3">Category / Type</th>
                                     <th className="text-secondary small text-uppercase py-3">Account</th>
@@ -1336,12 +1451,15 @@ const Transactions: React.FC = () => {
                         <AlertTriangle size={48} />
                     </div>
                     <p className="mb-4">
-                        Are you sure you want to delete <span className="fw-bold">{selectedIds.length}</span> selected transaction(s)?
+                        {deleteTargetId 
+                            ? "Are you sure you want to delete this transaction?" 
+                            : `Are you sure you want to delete ${selectedIds.length} selected transaction(s)?`
+                        }
                         <br/><span className="text-muted small">This action cannot be undone.</span>
                     </p>
                     <div className="d-flex justify-content-center gap-2">
                         <button className="btn btn-light border" onClick={() => setIsDeleteModalOpen(false)}>Cancel</button>
-                        <button className="btn btn-danger" onClick={confirmBatchDelete}>Delete Permanently</button>
+                        <button className="btn btn-danger" onClick={handleConfirmDelete}>Delete Permanently</button>
                     </div>
                 </div>
             </Modal>
