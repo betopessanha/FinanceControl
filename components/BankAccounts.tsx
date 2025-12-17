@@ -1,10 +1,10 @@
 
 import React, { useState } from 'react';
 import Card, { CardContent } from './ui/Card';
-import { BankAccount } from '../types';
-import { PlusCircle, Search, Edit2, Trash2, Landmark, CreditCard, Wallet, Save, X, Building2 } from 'lucide-react';
+import { BankAccount, BusinessEntity, LegalStructure } from '../types';
+import { PlusCircle, Search, Edit2, Trash2, Landmark, CreditCard, Wallet, Save, X, Building2, Briefcase, ArrowLeft } from 'lucide-react';
 import Modal from './ui/Modal';
-import { formatCurrency } from '../lib/utils';
+import { formatCurrency, getTaxFormForStructure } from '../lib/utils';
 import { useData } from '../lib/DataContext';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
@@ -12,14 +12,15 @@ const BankAccounts: React.FC = () => {
     // Consume Data
     const { 
         accounts, refreshData, businessEntities,
-        addLocalAccount, updateLocalAccount, deleteLocalAccount 
+        addLocalAccount, updateLocalAccount, deleteLocalAccount,
+        addLocalEntity
     } = useData();
 
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingAccount, setEditingAccount] = useState<BankAccount | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
 
-    // Form State
+    // Bank Account Form State
     const [formData, setFormData] = useState<Omit<BankAccount, 'id'>>({ 
         name: '', 
         type: 'Checking', 
@@ -27,7 +28,16 @@ const BankAccounts: React.FC = () => {
         businessEntityId: ''
     });
 
+    // --- New Company (Entity) Form State ---
+    const [isCreatingEntity, setIsCreatingEntity] = useState(false);
+    const [entityForm, setEntityForm] = useState<Omit<BusinessEntity, 'id' | 'taxForm'>>({
+        name: '',
+        structure: 'Sole Proprietorship',
+        ein: ''
+    });
+
     const handleOpenModal = (account?: BankAccount) => {
+        setIsCreatingEntity(false); // Reset mode
         if (account) {
             setEditingAccount(account);
             setFormData({ 
@@ -48,17 +58,49 @@ const BankAccounts: React.FC = () => {
         setIsModalOpen(true);
     };
 
+    // --- Save Company Logic ---
+    const handleSaveNewEntity = async () => {
+        if(!entityForm.name) {
+            alert("Company Name is required");
+            return;
+        }
+
+        const newId = `ent-${Date.now()}`;
+        const taxForm = getTaxFormForStructure(entityForm.structure);
+
+        const newEntity: BusinessEntity = {
+            id: newId,
+            name: entityForm.name,
+            structure: entityForm.structure,
+            taxForm: taxForm,
+            ein: entityForm.ein
+        };
+
+        // Save to Global State & DB
+        await addLocalEntity(newEntity);
+
+        // Auto-select this new entity in the bank form
+        setFormData(prev => ({ ...prev, businessEntityId: newId }));
+        
+        // Return to Bank Form
+        setIsCreatingEntity(false);
+    };
+
+    // --- Save Bank Account Logic ---
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         
         const accountId = editingAccount ? editingAccount.id : `acc-${Date.now()}`;
+        
+        // If user didn't select an entity but there are entities, warn or default?
+        // Let's assume it's optional but recommended.
         
         const accountObj: BankAccount = {
             id: accountId,
             ...formData
         };
 
-        // 1. Optimistic Update (Immediate UI Refresh)
+        // 1. Optimistic Update
         if (editingAccount) {
             updateLocalAccount(accountObj);
         } else {
@@ -67,30 +109,23 @@ const BankAccounts: React.FC = () => {
 
         setIsModalOpen(false);
 
-        // 2. Persist to DB (if configured)
+        // 2. Persist to DB
         if (isSupabaseConfigured && supabase) {
             try {
                 const payload = { 
                     name: formData.name, 
-                    type: formData.type,
+                    type: formData.type, 
                     initial_balance: formData.initialBalance,
                     business_entity_id: formData.businessEntityId || null 
                 };
 
                 if (editingAccount) {
-                    const { error } = await supabase
-                        .from('accounts')
-                        .update(payload)
-                        .eq('id', editingAccount.id);
+                    const { error } = await supabase.from('accounts').update(payload).eq('id', editingAccount.id);
                     if (error) throw error;
                 } else {
-                    const { error } = await supabase
-                        .from('accounts')
-                        .insert([payload]);
+                    const { error } = await supabase.from('accounts').insert([payload]);
                     if (error) throw error;
                 }
-                // Optional: refreshData() ensures consistency with backend ID triggers, etc.
-                // await refreshData(); 
             } catch (error) {
                 console.error("Failed to save account to DB:", error);
                 alert("Saved locally, but failed to sync with database.");
@@ -103,21 +138,12 @@ const BankAccounts: React.FC = () => {
             alert("You must have at least one account.");
             return;
         }
-
         if (window.confirm('Are you sure you want to delete this account?')) {
-            // 1. Optimistic Delete
             deleteLocalAccount(id);
-
-            // 2. DB Delete
             if (isSupabaseConfigured && supabase) {
                 try {
-                    const { error } = await supabase.from('accounts').delete().eq('id', id);
-                    if (error) throw error;
-                } catch (error) {
-                    console.error("Failed to delete account from DB:", error);
-                    alert("Deleted locally, but failed to remove from database. It might be referenced by transactions.");
-                    await refreshData(); // Revert if failed
-                }
+                    await supabase.from('accounts').delete().eq('id', id);
+                } catch (error) { console.error(error); }
             }
         }
     };
@@ -226,79 +252,162 @@ const BankAccounts: React.FC = () => {
 
             {/* Add/Edit Modal */}
             <Modal 
-                title={editingAccount ? "Edit Account" : "Add New Account"} 
+                title={isCreatingEntity ? "Register New Company" : (editingAccount ? "Edit Account" : "Add New Account")} 
                 isOpen={isModalOpen} 
                 onClose={() => setIsModalOpen(false)}
             >
-                <form onSubmit={handleSubmit}>
-                    <div className="mb-3">
-                        <label htmlFor="name" className="form-label fw-bold small text-muted">Account Name</label>
-                        <input 
-                            type="text" 
-                            id="name" 
-                            value={formData.name} 
-                            onChange={e => setFormData({...formData, name: e.target.value})} 
-                            placeholder="e.g. Chase Business Checking" 
-                            className="form-control"
-                            required 
-                        />
-                    </div>
-
-                    <div className="row">
-                        <div className="col-md-6 mb-3">
-                            <label htmlFor="type" className="form-label fw-bold small text-muted">Account Type</label>
-                            <select 
-                                id="type" 
-                                className="form-select"
-                                value={formData.type}
-                                onChange={e => setFormData({...formData, type: e.target.value as any})}
-                            >
-                                <option value="Checking">Checking</option>
-                                <option value="Savings">Savings</option>
-                                <option value="Credit Card">Credit Card</option>
-                            </select>
+                {isCreatingEntity ? (
+                    /* --- SUB-FORM: CREATE ENTITY --- */
+                    <div>
+                        <div className="alert alert-info d-flex align-items-center small mb-3">
+                            <Briefcase size={16} className="me-2" />
+                            <div>Define your legal business entity to link it with the bank.</div>
                         </div>
-                        <div className="col-md-6 mb-3">
-                             <label htmlFor="entity" className="form-label fw-bold small text-muted">Business Entity</label>
-                             <select 
-                                id="entity"
-                                className="form-select"
-                                value={formData.businessEntityId}
-                                onChange={e => setFormData({...formData, businessEntityId: e.target.value})}
-                                required
-                             >
-                                 <option value="">Select Entity...</option>
-                                 {businessEntities.map(ent => (
-                                     <option key={ent.id} value={ent.id}>{ent.name} ({ent.structure})</option>
-                                 ))}
-                             </select>
-                        </div>
-                    </div>
 
-                    <div className="mb-4">
-                        <label htmlFor="balance" className="form-label fw-bold small text-muted">Initial Balance</label>
-                        <div className="input-group">
-                            <span className="input-group-text">$</span>
+                        <div className="mb-3">
+                            <label className="form-label fw-bold small text-muted">Company Name</label>
                             <input 
-                                type="number" 
-                                id="balance" 
-                                value={formData.initialBalance} 
-                                onChange={e => setFormData({...formData, initialBalance: parseFloat(e.target.value) || 0})} 
-                                className="form-control"
-                                step="0.01"
+                                type="text" 
+                                className="form-control" 
+                                value={entityForm.name}
+                                onChange={e => setEntityForm({...entityForm, name: e.target.value})}
+                                placeholder="e.g. My Trucking LLC"
+                                autoFocus
                             />
                         </div>
-                        <div className="form-text text-muted">Starting balance when you began using this system.</div>
-                    </div>
+                        <div className="mb-3">
+                            <label className="form-label fw-bold small text-muted">Legal Structure</label>
+                            <select 
+                                className="form-select"
+                                value={entityForm.structure}
+                                onChange={e => setEntityForm({...entityForm, structure: e.target.value as LegalStructure})}
+                            >
+                                <option value="Sole Proprietorship">Sole Proprietorship</option>
+                                <option value="LLC (Single Member)">LLC (Single Member)</option>
+                                <option value="LLC (Multi-Member)">LLC (Multi-Member)</option>
+                                <option value="S-Corp">S-Corp</option>
+                                <option value="C-Corp">C-Corp</option>
+                                <option value="Partnership">Partnership</option>
+                            </select>
+                        </div>
+                        <div className="mb-4">
+                            <label className="form-label fw-bold small text-muted">EIN (Optional)</label>
+                            <input 
+                                type="text" 
+                                className="form-control" 
+                                value={entityForm.ein}
+                                onChange={e => setEntityForm({...entityForm, ein: e.target.value})}
+                                placeholder="XX-XXXXXXX"
+                            />
+                        </div>
 
-                    <div className="d-flex justify-content-end gap-2">
-                        <button type="button" onClick={() => setIsModalOpen(false)} className="btn btn-light border">Cancel</button>
-                        <button type="submit" className="btn btn-primary d-flex align-items-center">
-                            <Save size={16} className="me-2" />
-                            {editingAccount ? 'Save Changes' : 'Create Account'}
-                        </button>
+                        <div className="d-flex justify-content-between pt-2 border-top">
+                             <button 
+                                type="button" 
+                                onClick={() => setIsCreatingEntity(false)} 
+                                className="btn btn-light border text-muted"
+                            >
+                                <ArrowLeft size={16} className="me-1"/> Back
+                            </button>
+                            <button 
+                                type="button" 
+                                onClick={handleSaveNewEntity} 
+                                className="btn btn-primary"
+                            >
+                                Save Company
+                            </button>
+                        </div>
                     </div>
-                </form>
+                ) : (
+                    /* --- MAIN FORM: BANK ACCOUNT --- */
+                    <form onSubmit={handleSubmit}>
+                        <div className="mb-3">
+                            <label htmlFor="name" className="form-label fw-bold small text-muted">Account Name</label>
+                            <input 
+                                type="text" 
+                                id="name" 
+                                value={formData.name} 
+                                onChange={e => setFormData({...formData, name: e.target.value})} 
+                                placeholder="e.g. Chase Business Checking" 
+                                className="form-control"
+                                required 
+                            />
+                        </div>
+
+                        <div className="row">
+                            <div className="col-md-6 mb-3">
+                                <label htmlFor="type" className="form-label fw-bold small text-muted">Account Type</label>
+                                <select 
+                                    id="type" 
+                                    className="form-select"
+                                    value={formData.type}
+                                    onChange={e => setFormData({...formData, type: e.target.value as any})}
+                                >
+                                    <option value="Checking">Checking</option>
+                                    <option value="Savings">Savings</option>
+                                    <option value="Credit Card">Credit Card</option>
+                                </select>
+                            </div>
+                            <div className="col-md-6 mb-3">
+                                <label htmlFor="entity" className="form-label fw-bold small text-muted">Business Entity</label>
+                                <div className="input-group">
+                                    <select 
+                                        id="entity"
+                                        className="form-select"
+                                        value={formData.businessEntityId}
+                                        onChange={e => setFormData({...formData, businessEntityId: e.target.value})}
+                                        required
+                                    >
+                                        <option value="">Select Entity...</option>
+                                        {businessEntities.map(ent => (
+                                            <option key={ent.id} value={ent.id}>{ent.name}</option>
+                                        ))}
+                                    </select>
+                                    <button 
+                                        type="button" 
+                                        className="btn btn-outline-primary"
+                                        title="Register New Company"
+                                        onClick={() => {
+                                            setEntityForm({ name: '', structure: 'Sole Proprietorship', ein: '' });
+                                            setIsCreatingEntity(true);
+                                        }}
+                                    >
+                                        <PlusCircle size={18} />
+                                    </button>
+                                </div>
+                                {businessEntities.length === 0 && (
+                                    <div className="form-text text-danger small">
+                                        You must register a company first. Click +
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="mb-4">
+                            <label htmlFor="balance" className="form-label fw-bold small text-muted">Initial Balance</label>
+                            <div className="input-group">
+                                <span className="input-group-text">$</span>
+                                <input 
+                                    type="number" 
+                                    id="balance" 
+                                    value={formData.initialBalance} 
+                                    onChange={e => setFormData({...formData, initialBalance: parseFloat(e.target.value) || 0})} 
+                                    className="form-control"
+                                    step="0.01"
+                                />
+                            </div>
+                            <div className="form-text text-muted">Starting balance when you began using this system.</div>
+                        </div>
+
+                        <div className="d-flex justify-content-end gap-2">
+                            <button type="button" onClick={() => setIsModalOpen(false)} className="btn btn-light border">Cancel</button>
+                            <button type="submit" className="btn btn-primary d-flex align-items-center">
+                                <Save size={16} className="me-2" />
+                                {editingAccount ? 'Save Changes' : 'Create Account'}
+                            </button>
+                        </div>
+                    </form>
+                )}
             </Modal>
         </div>
     );

@@ -1,18 +1,19 @@
 
 import React, { useState, useEffect } from 'react';
 import Card, { CardHeader, CardTitle, CardContent } from './ui/Card';
-import { Clock, Save, CheckCircle2, LogOut, Briefcase, PlusCircle, Trash2, Edit2, Building, Database, Lock, Unlock, Server, ShieldAlert, Eye, EyeOff, Loader2 } from 'lucide-react';
+import { Clock, Save, CheckCircle2, LogOut, Briefcase, PlusCircle, Trash2, Edit2, Building, Database, Lock, Unlock, Server, ShieldAlert, Eye, EyeOff, Loader2, Code, Copy, Check } from 'lucide-react';
 import { useAuth } from '../lib/AuthContext';
 import { saveConnectionSettings, clearConnectionSettings, isSupabaseConfigured } from '../lib/supabase';
 import { useData } from '../lib/DataContext';
 import { BusinessEntity, LegalStructure } from '../types';
+import { getTaxFormForStructure } from '../lib/utils'; // Imported shared helper
 import Modal from './ui/Modal';
 
 const Settings: React.FC = () => {
     const { user, signIn, signOut } = useAuth();
     const { 
         businessEntities, addLocalEntity, updateLocalEntity, deleteLocalEntity, 
-        saveSystemSetting // Using context method to save to DB
+        saveSystemSetting 
     } = useData();
     
     // Config State
@@ -28,6 +29,8 @@ const Settings: React.FC = () => {
     const [dbKey, setDbKey] = useState('');
     const [showKey, setShowKey] = useState(false);
     const [dbError, setDbError] = useState<string | null>(null);
+    const [showSchema, setShowSchema] = useState(false);
+    const [copied, setCopied] = useState(false);
 
     // Entity Management State
     const [isEntityModalOpen, setIsEntityModalOpen] = useState(false);
@@ -39,11 +42,9 @@ const Settings: React.FC = () => {
     });
 
     useEffect(() => {
-        // Load current settings from Local Storage (which is synced from DB on load)
         const storedTimeout = localStorage.getItem('custom_session_timeout');
         if (storedTimeout) setTimeoutMinutes(storedTimeout);
 
-        // Load existing DB config if exists
         const storedUrl = localStorage.getItem('custom_supabase_url');
         const storedKey = localStorage.getItem('custom_supabase_key');
         if (storedUrl) setDbUrl(storedUrl);
@@ -55,7 +56,6 @@ const Settings: React.FC = () => {
         setIsSaving(true);
         
         if (timeoutMinutes) {
-            // Save to Supabase (and LocalStorage via helper)
             await saveSystemSetting('custom_session_timeout', timeoutMinutes);
         }
 
@@ -74,17 +74,13 @@ const Settings: React.FC = () => {
         setIsVerifying(true);
         setDbError(null);
 
-        // Security Check: Verify current user password AND Role
         if (user && user.email) {
-            
-            // 1. Verify Role (Access Level)
             if (user.role !== 'admin') {
                 setDbError("Access Denied: You do not have permission to modify system connections.");
                 setIsVerifying(false);
                 return;
             }
 
-            // 2. Verify Password (Identity)
             const result = await signIn(user.email, unlockPassword);
             if (result.error) {
                 setDbError("Incorrect password. Access denied.");
@@ -95,7 +91,6 @@ const Settings: React.FC = () => {
                 setUnlockPassword('');
             }
         } else {
-            // Should not happen if logged in
             setDbError("User session not found.");
             setIsVerifying(false);
         }
@@ -119,19 +114,6 @@ const Settings: React.FC = () => {
             clearConnectionSettings();
         }
     }
-
-    // --- Entity Helpers ---
-    const getTaxFormForStructure = (structure: LegalStructure): string => {
-        switch (structure) {
-            case 'Sole Proprietorship': return 'Schedule C (Form 1040)';
-            case 'LLC (Single Member)': return 'Schedule C (Form 1040)';
-            case 'LLC (Multi-Member)': return 'Form 1065 (Partnership)';
-            case 'Partnership': return 'Form 1065';
-            case 'S-Corp': return 'Form 1120-S';
-            case 'C-Corp': return 'Form 1120';
-            default: return 'Schedule C';
-        }
-    };
 
     const handleOpenEntityModal = (entity?: BusinessEntity) => {
         if (entity) {
@@ -178,6 +160,107 @@ const Settings: React.FC = () => {
         }
     };
 
+    // SAFE MIGRATION SQL: Adds tables/columns only if they are missing.
+    // Does NOT delete existing data.
+    const dbSchemaSql = `
+-- 1. App Settings Table
+CREATE TABLE IF NOT EXISTS app_settings (
+  key text primary key,
+  value text not null
+);
+
+-- 2. Business Entities Table
+CREATE TABLE IF NOT EXISTS business_entities (
+  id text primary key,
+  name text not null,
+  structure text not null,
+  tax_form text not null,
+  ein text,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+-- 3. Categories Table (ensure table exists)
+CREATE TABLE IF NOT EXISTS categories (
+  id text primary key default gen_random_uuid()::text,
+  name text not null,
+  type text not null
+);
+-- Add missing columns to Categories safely
+ALTER TABLE categories ADD COLUMN IF NOT EXISTS is_tax_deductible boolean DEFAULT true;
+
+-- 4. Trucks Table
+CREATE TABLE IF NOT EXISTS trucks (
+  id text primary key default gen_random_uuid()::text,
+  unit_number text not null,
+  make text,
+  model text,
+  year numeric
+);
+
+-- 5. Accounts Table
+CREATE TABLE IF NOT EXISTS accounts (
+  id text primary key default gen_random_uuid()::text,
+  name text not null,
+  type text not null,
+  initial_balance numeric default 0
+);
+-- Add missing Foreign Key to Accounts safely
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS business_entity_id text REFERENCES business_entities(id) ON DELETE SET NULL;
+
+-- 6. Transactions Table
+CREATE TABLE IF NOT EXISTS transactions (
+  id text primary key default gen_random_uuid()::text,
+  date timestamp with time zone not null,
+  description text,
+  amount numeric not null,
+  type text not null,
+  account_id text REFERENCES accounts(id) ON DELETE CASCADE
+);
+-- Add missing columns/FKs to Transactions safely
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS to_account_id text REFERENCES accounts(id) ON DELETE SET NULL;
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS category_id text REFERENCES categories(id) ON DELETE SET NULL;
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS truck_id text REFERENCES trucks(id) ON DELETE SET NULL;
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS receipts text[] DEFAULT array[]::text[];
+
+-- 7. Enable Security (RLS) - Idempotent
+ALTER TABLE app_settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE business_entities ENABLE ROW LEVEL SECURITY;
+ALTER TABLE categories ENABLE ROW LEVEL SECURITY;
+ALTER TABLE trucks ENABLE ROW LEVEL SECURITY;
+ALTER TABLE accounts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE transactions ENABLE ROW LEVEL SECURITY;
+
+-- 8. Access Policies (Drop existing to avoid conflict or use IF NOT EXISTS workaround if supported, 
+-- but simpler here to just create generic policies. If they exist, Supabase might return a soft error which is fine).
+DO $$ 
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Enable all access' AND tablename = 'transactions') THEN
+    CREATE POLICY "Enable all access" ON transactions FOR ALL USING (true) WITH CHECK (true);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Enable all access' AND tablename = 'accounts') THEN
+    CREATE POLICY "Enable all access" ON accounts FOR ALL USING (true) WITH CHECK (true);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Enable all access' AND tablename = 'categories') THEN
+    CREATE POLICY "Enable all access" ON categories FOR ALL USING (true) WITH CHECK (true);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Enable all access' AND tablename = 'trucks') THEN
+    CREATE POLICY "Enable all access" ON trucks FOR ALL USING (true) WITH CHECK (true);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Enable all access' AND tablename = 'business_entities') THEN
+    CREATE POLICY "Enable all access" ON business_entities FOR ALL USING (true) WITH CHECK (true);
+  END IF;
+   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Enable all access' AND tablename = 'app_settings') THEN
+    CREATE POLICY "Enable all access" ON app_settings FOR ALL USING (true) WITH CHECK (true);
+  END IF;
+END $$;
+`.trim();
+
+    const copyToClipboard = () => {
+        navigator.clipboard.writeText(dbSchemaSql);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+    };
+
     return (
         <div className="mb-5" style={{ maxWidth: '800px' }}>
             <div className="d-flex flex-column flex-md-row align-items-md-end justify-content-between gap-3 mb-4">
@@ -190,9 +273,20 @@ const Settings: React.FC = () => {
             {/* Database Connection Settings (Protected) */}
             <Card className="mb-4 border-primary border-opacity-25">
                 <CardHeader className="bg-primary bg-opacity-10 border-bottom-0">
-                    <div className="d-flex align-items-center">
-                        <Database className="me-2 text-primary" size={20} />
-                        <CardTitle>Database Connection (Supabase)</CardTitle>
+                    <div className="d-flex align-items-center justify-content-between w-100">
+                        <div className="d-flex align-items-center">
+                            <Database className="me-2 text-primary" size={20} />
+                            <CardTitle>Database Connection (Supabase)</CardTitle>
+                        </div>
+                        {!isDbLocked && (
+                             <button 
+                                onClick={() => setShowSchema(true)}
+                                className="btn btn-sm btn-outline-primary bg-white d-flex align-items-center"
+                                type="button"
+                             >
+                                <Code size={14} className="me-1"/> Update Database (SQL)
+                             </button>
+                        )}
                     </div>
                 </CardHeader>
                 <CardContent>
@@ -452,6 +546,43 @@ const Settings: React.FC = () => {
                         <button type="submit" className="btn btn-primary">Save Profile</button>
                     </div>
                 </form>
+            </Modal>
+
+            {/* SQL Schema Helper Modal */}
+            <Modal
+                isOpen={showSchema}
+                onClose={() => setShowSchema(false)}
+                title="Update Database Structure (Safe)"
+                size="lg"
+            >
+                <div className="mb-3">
+                    <div className="alert alert-info small d-flex align-items-start">
+                        <CheckCircle2 size={16} className="me-2 mt-1 flex-shrink-0" />
+                        <div>
+                            <strong>Safe Migration:</strong> This script uses <code>IF NOT EXISTS</code> logic. 
+                            It will add missing tables or columns (like Entity links) 
+                            <strong>without deleting your existing transaction data</strong>.
+                        </div>
+                    </div>
+                    <p className="small text-muted">
+                        Run the following SQL in your Supabase <strong>SQL Editor</strong>:
+                    </p>
+                    <div className="position-relative">
+                        <pre className="bg-light p-3 rounded border small text-dark mb-0" style={{maxHeight: '300px', overflowY: 'auto'}}>
+                            <code>{dbSchemaSql}</code>
+                        </pre>
+                        <button 
+                            className="btn btn-sm btn-light border position-absolute top-0 end-0 m-2 shadow-sm"
+                            onClick={copyToClipboard}
+                        >
+                            {copied ? <Check size={14} className="text-success" /> : <Copy size={14} />}
+                            <span className="ms-1">{copied ? "Copied" : "Copy"}</span>
+                        </button>
+                    </div>
+                </div>
+                <div className="d-flex justify-content-end">
+                    <button className="btn btn-primary" onClick={() => setShowSchema(false)}>Done</button>
+                </div>
             </Modal>
         </div>
     );
