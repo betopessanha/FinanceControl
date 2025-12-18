@@ -9,7 +9,7 @@ export interface Category {
   id: string;
   name: string;
   type: TransactionType;
-  isTaxDeductible?: boolean; // New field to track tax status explicitly
+  isTaxDeductible?: boolean;
 }
 
 export interface Truck {
@@ -32,8 +32,17 @@ export interface BusinessEntity {
     id: string;
     name: string;
     structure: LegalStructure;
-    taxForm: string; // Calculated based on structure (e.g., "Form 1065", "Schedule C")
+    taxForm: string;
     ein?: string;
+    // New Detailed Fields
+    email?: string;
+    phone?: string;
+    website?: string;
+    address?: string;
+    city?: string;
+    state?: string;
+    zip?: string;
+    logoUrl?: string;
 }
 
 export interface BankAccount {
@@ -41,7 +50,7 @@ export interface BankAccount {
   name: string;
   type: 'Checking' | 'Savings' | 'Credit Card';
   initialBalance: number;
-  businessEntityId?: string; // Link to the legal entity owning this account
+  businessEntityId?: string;
 }
 
 export interface FiscalYearRecord {
@@ -53,13 +62,13 @@ export interface FiscalYearRecord {
 
 export interface Transaction {
   id: string;
-  date: string; // ISO string format
+  date: string;
   description: string;
-  category?: Category; // Optional for Transfers
+  category?: Category;
   amount: number;
-  truck?: Truck; // Optional for Transfers
+  truck?: Truck;
   type: TransactionType;
-  accountId: string; // The account money comes from (Expense/Transfer) or goes to (Income)
-  toAccountId?: string; // Only for Transfers (Destination)
+  accountId: string;
+  toAccountId?: string;
   receipts?: string[]; 
 }

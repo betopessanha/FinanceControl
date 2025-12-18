@@ -1,20 +1,15 @@
 
 import React, { useState, useEffect } from 'react';
 import Card, { CardHeader, CardTitle, CardContent } from './ui/Card';
-import { Clock, Save, CheckCircle2, LogOut, Briefcase, PlusCircle, Trash2, Edit2, Building, Database, Lock, Unlock, Server, ShieldAlert, Eye, EyeOff, Loader2, Code, Copy, Check } from 'lucide-react';
+import { Clock, Save, CheckCircle2, LogOut, Database, Lock, Unlock, Server, ShieldAlert, Eye, EyeOff, Loader2, Code, Copy, Check } from 'lucide-react';
 import { useAuth } from '../lib/AuthContext';
 import { saveConnectionSettings, clearConnectionSettings, isSupabaseConfigured } from '../lib/supabase';
 import { useData } from '../lib/DataContext';
-import { BusinessEntity, LegalStructure } from '../types';
-import { getTaxFormForStructure } from '../lib/utils';
 import Modal from './ui/Modal';
 
 const Settings: React.FC = () => {
     const { user, signIn, signOut } = useAuth();
-    const { 
-        businessEntities, addLocalEntity, updateLocalEntity, deleteLocalEntity, 
-        saveSystemSetting 
-    } = useData();
+    const { saveSystemSetting } = useData();
     
     const [timeoutMinutes, setTimeoutMinutes] = useState('15');
     const [saved, setSaved] = useState(false);
@@ -30,18 +25,9 @@ const Settings: React.FC = () => {
     const [showSchema, setShowSchema] = useState(false);
     const [copied, setCopied] = useState(false);
 
-    const [isEntityModalOpen, setIsEntityModalOpen] = useState(false);
-    const [editingEntity, setEditingEntity] = useState<BusinessEntity | null>(null);
-    const [entityForm, setEntityForm] = useState<Omit<BusinessEntity, 'id' | 'taxForm'>>({
-        name: '',
-        structure: 'Sole Proprietorship',
-        ein: ''
-    });
-
     useEffect(() => {
         const storedTimeout = localStorage.getItem('custom_session_timeout');
         if (storedTimeout) setTimeoutMinutes(storedTimeout);
-
         const storedUrl = localStorage.getItem('custom_supabase_url');
         const storedKey = localStorage.getItem('custom_supabase_key');
         if (storedUrl) setDbUrl(storedUrl);
@@ -69,13 +55,13 @@ const Settings: React.FC = () => {
         setDbError(null);
         if (user && user.email) {
             if (user.role !== 'admin') {
-                setDbError("Access Denied: You do not have permission to modify system connections.");
+                setDbError("Access Denied: Admin required.");
                 setIsVerifying(false);
                 return;
             }
             const result = await signIn(user.email, unlockPassword);
             if (result.error) {
-                setDbError("Incorrect password. Access denied.");
+                setDbError("Incorrect password.");
                 setIsVerifying(false);
             } else {
                 setIsDbLocked(false);
@@ -99,50 +85,6 @@ const Settings: React.FC = () => {
         if(window.confirm("Are you sure?")) clearConnectionSettings();
     }
 
-    const handleOpenEntityModal = (entity?: BusinessEntity) => {
-        if (entity) {
-            setEditingEntity(entity);
-            setEntityForm({
-                name: entity.name,
-                structure: entity.structure,
-                ein: entity.ein || ''
-            });
-        } else {
-            setEditingEntity(null);
-            setEntityForm({ name: '', structure: 'Sole Proprietorship', ein: '' });
-        }
-        setIsEntityModalOpen(true);
-    };
-
-    const handleSaveEntity = async (e: React.FormEvent) => {
-        e.preventDefault();
-        const taxForm = getTaxFormForStructure(entityForm.structure);
-        const entityId = editingEntity ? editingEntity.id : `ent-${Date.now()}`;
-        
-        const newEntity: BusinessEntity = {
-            id: entityId,
-            name: entityForm.name,
-            structure: entityForm.structure,
-            taxForm: taxForm,
-            ein: entityForm.ein
-        };
-
-        if (editingEntity) {
-            await updateLocalEntity(newEntity);
-        } else {
-            await addLocalEntity(newEntity);
-        }
-        
-        setEditingEntity(null);
-        setIsEntityModalOpen(false);
-    };
-
-    const handleDeleteEntity = async (id: string) => {
-        if (window.confirm("Delete this business entity?")) {
-            await deleteLocalEntity(id);
-        }
-    };
-
     const dbSchemaSql = `
 -- 1. App Settings Table
 CREATE TABLE IF NOT EXISTS app_settings (
@@ -150,7 +92,7 @@ CREATE TABLE IF NOT EXISTS app_settings (
   value text not null
 );
 
--- 2. Business Entities Table
+-- 2. Business Entities Table (EXPANDED)
 CREATE TABLE IF NOT EXISTS business_entities (
   id text primary key,
   name text not null,
@@ -159,6 +101,16 @@ CREATE TABLE IF NOT EXISTS business_entities (
   ein text,
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
+
+-- SAFE MIGRATION: Add new detailed columns if they don't exist
+ALTER TABLE business_entities ADD COLUMN IF NOT EXISTS email text;
+ALTER TABLE business_entities ADD COLUMN IF NOT EXISTS phone text;
+ALTER TABLE business_entities ADD COLUMN IF NOT EXISTS website text;
+ALTER TABLE business_entities ADD COLUMN IF NOT EXISTS address text;
+ALTER TABLE business_entities ADD COLUMN IF NOT EXISTS city text;
+ALTER TABLE business_entities ADD COLUMN IF NOT EXISTS state text;
+ALTER TABLE business_entities ADD COLUMN IF NOT EXISTS zip text;
+ALTER TABLE business_entities ADD COLUMN IF NOT EXISTS logo_url text;
 
 -- 3. Categories Table
 CREATE TABLE IF NOT EXISTS categories (
@@ -200,7 +152,7 @@ ALTER TABLE transactions ADD COLUMN IF NOT EXISTS category_id text REFERENCES ca
 ALTER TABLE transactions ADD COLUMN IF NOT EXISTS truck_id text REFERENCES trucks(id) ON DELETE SET NULL;
 ALTER TABLE transactions ADD COLUMN IF NOT EXISTS receipts text[] DEFAULT array[]::text[];
 
--- 7. Enable Security
+-- 7. Security Policies (RLS)
 ALTER TABLE app_settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE business_entities ENABLE ROW LEVEL SECURITY;
 ALTER TABLE categories ENABLE ROW LEVEL SECURITY;
@@ -208,7 +160,7 @@ ALTER TABLE trucks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE accounts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE transactions ENABLE ROW LEVEL SECURITY;
 
--- 8. Policies
+-- 8. Policies Creation (Safe check)
 DO $$ 
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Enable all access' AND tablename = 'transactions') THEN
@@ -243,11 +195,11 @@ END $$;
             <div className="d-flex flex-column flex-md-row align-items-md-end justify-content-between gap-3 mb-4">
                 <div>
                   <h2 className="fw-bold text-dark mb-1">Settings</h2>
-                  <p className="text-muted mb-0">System configuration and business profile.</p>
+                  <p className="text-muted mb-0">System configuration and database bridge.</p>
                 </div>
             </div>
 
-            <Card className="mb-4 border-primary border-opacity-25">
+            <Card className="mb-4 border-primary border-opacity-25 shadow-sm">
                 <CardHeader className="bg-primary bg-opacity-10 border-bottom-0">
                     <div className="d-flex align-items-center justify-content-between w-100">
                         <div className="d-flex align-items-center">
@@ -255,12 +207,8 @@ END $$;
                             <CardTitle>Database Connection (Supabase)</CardTitle>
                         </div>
                         {!isDbLocked && (
-                             <button 
-                                onClick={() => setShowSchema(true)}
-                                className="btn btn-sm btn-outline-primary bg-white d-flex align-items-center"
-                                type="button"
-                             >
-                                <Code size={14} className="me-1"/> Update Database (SQL)
+                             <button onClick={() => setShowSchema(true)} className="btn btn-sm btn-outline-primary bg-white d-flex align-items-center">
+                                <Code size={14} className="me-1"/> Run Migration
                              </button>
                         )}
                     </div>
@@ -268,11 +216,8 @@ END $$;
                 <CardContent>
                     {isDbLocked ? (
                         <div className="text-center py-3">
-                            <div className="mb-3">
-                                <Lock size={32} className="text-muted opacity-25" />
-                            </div>
-                            <h6 className="fw-bold">Configuration Locked</h6>
-                            <p className="text-muted small mb-3">Admin password required.</p>
+                            <Lock size={32} className="text-muted opacity-25 mb-2" />
+                            <p className="text-muted small mb-3">Admin password required to modify connection.</p>
                             <form onSubmit={handleUnlockDbSettings} className="d-inline-block text-start" style={{maxWidth: '300px', width: '100%'}}>
                                 <div className="input-group mb-2">
                                     <input type="password"  className="form-control" placeholder="Admin Password" value={unlockPassword} onChange={(e) => setUnlockPassword(e.target.value)} required />
@@ -286,7 +231,7 @@ END $$;
                     ) : (
                         <form onSubmit={handleSaveDatabase}>
                             <div className="alert alert-info d-flex align-items-center small mb-3">
-                                <Unlock size={16} className="me-2 flex-shrink-0" />
+                                <Unlock size={16} className="me-2" />
                                 <div>Unlocking Database Configuration.</div>
                             </div>
                             <div className="mb-3">
@@ -314,41 +259,6 @@ END $$;
                 </CardContent>
             </Card>
 
-            <Card className="mb-4">
-                <CardHeader>
-                    <div className="d-flex align-items-center justify-content-between w-100">
-                        <div className="d-flex align-items-center">
-                            <Briefcase className="me-2 text-primary" size={20} />
-                            <CardTitle>Business Profiles</CardTitle>
-                        </div>
-                        <button onClick={() => handleOpenEntityModal()} className="btn btn-sm btn-outline-primary d-flex align-items-center">
-                            <PlusCircle size={14} className="me-1" /> Add Entity
-                        </button>
-                    </div>
-                </CardHeader>
-                <CardContent>
-                    <div className="list-group">
-                        {businessEntities.length > 0 ? (
-                            businessEntities.map(ent => (
-                                <div key={ent.id} className="list-group-item d-flex justify-content-between align-items-center">
-                                    <div className="d-flex align-items-center">
-                                        <div className="rounded-circle p-2 bg-light text-primary me-3"><Building size={18} /></div>
-                                        <div>
-                                            <h6 className="mb-0 fw-bold">{ent.name}</h6>
-                                            <small className="text-muted">{ent.structure} &bull; <span className="text-info">{ent.taxForm}</span></small>
-                                        </div>
-                                    </div>
-                                    <div className="d-flex gap-2">
-                                        <button onClick={() => handleOpenEntityModal(ent)} className="btn btn-sm btn-light text-secondary border"><Edit2 size={14} /></button>
-                                        <button onClick={() => handleDeleteEntity(ent.id)} className="btn btn-sm btn-light text-danger border"><Trash2 size={14} /></button>
-                                    </div>
-                                </div>
-                            ))
-                        ) : <div className="text-center py-3 text-muted small">No entities defined.</div>}
-                    </div>
-                </CardContent>
-            </Card>
-
             <form onSubmit={handleSaveAppConfig}>
                 <Card className="mb-4">
                     <CardHeader><div className="d-flex align-items-center"><Clock className="me-2 text-primary" size={20} /><CardTitle>Application Settings</CardTitle></div></CardHeader>
@@ -371,37 +281,9 @@ END $$;
                 </div>
             </form>
 
-            <Modal isOpen={isEntityModalOpen} onClose={() => setIsEntityModalOpen(false)} title={editingEntity ? "Edit Business Profile" : "New Business Profile"}>
-                <form onSubmit={handleSaveEntity}>
-                    <div className="mb-3">
-                        <label className="form-label fw-bold small text-muted">Company Name</label>
-                        <input type="text" className="form-control" value={entityForm.name} onChange={e => setEntityForm({...entityForm, name: e.target.value})} required />
-                    </div>
-                    <div className="mb-3">
-                        <label className="form-label fw-bold small text-muted">Legal Structure</label>
-                        <select className="form-select" value={entityForm.structure} onChange={e => setEntityForm({...entityForm, structure: e.target.value as LegalStructure})}>
-                            <option value="Sole Proprietorship">Sole Proprietorship</option>
-                            <option value="LLC (Single Member)">LLC (Single Member)</option>
-                            <option value="LLC (Multi-Member)">LLC (Multi-Member)</option>
-                            <option value="S-Corp">S-Corp</option>
-                            <option value="C-Corp">C-Corp</option>
-                            <option value="Partnership">Partnership</option>
-                        </select>
-                    </div>
-                    <div className="mb-4">
-                        <label className="form-label fw-bold small text-muted">EIN (Optional)</label>
-                        <input type="text" className="form-control" value={entityForm.ein} onChange={e => setEntityForm({...entityForm, ein: e.target.value})} placeholder="XX-XXXXXXX" />
-                    </div>
-                    <div className="d-flex justify-content-end gap-2">
-                        <button type="button" onClick={() => setIsEntityModalOpen(false)} className="btn btn-light border">Cancel</button>
-                        <button type="submit" className="btn btn-primary">Save Profile</button>
-                    </div>
-                </form>
-            </Modal>
-
-            <Modal isOpen={showSchema} onClose={() => setShowSchema(false)} title="Update Database Structure (Safe)" size="lg">
+            <Modal isOpen={showSchema} onClose={() => setShowSchema(false)} title="Update Database Structure (Safe Migration)" size="lg">
                 <div className="mb-3">
-                    <p className="small text-muted">Run this SQL in Supabase SQL Editor:</p>
+                    <p className="small text-muted">Run this SQL in Supabase SQL Editor to support detailed company profiles:</p>
                     <div className="position-relative">
                         <pre className="bg-light p-3 rounded border small text-dark mb-0" style={{maxHeight: '300px', overflowY: 'auto'}}><code>{dbSchemaSql}</code></pre>
                         <button className="btn btn-sm btn-light border position-absolute top-0 end-0 m-2 shadow-sm" onClick={copyToClipboard}>

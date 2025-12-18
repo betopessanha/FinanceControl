@@ -7,7 +7,7 @@ import { supabase, isSupabaseConfigured } from './supabase';
 export interface ReportFilter {
     year: string;
     categoryNames: string[];
-    sourceReport: string; // e.g. "Car and truck expenses (Line 9)"
+    sourceReport: string;
 }
 
 interface DataContextType {
@@ -17,40 +17,28 @@ interface DataContextType {
     accounts: BankAccount[];
     businessEntities: BusinessEntity[];
     fiscalYearRecords: FiscalYearRecord[];
-    
     loading: boolean;
     refreshData: () => Promise<void>;
-    
     reportFilter: ReportFilter | null;
     setReportFilter: (filter: ReportFilter | null) => void;
-
-    // CRUD Methods
     addLocalTransaction: (t: Transaction) => void;
     updateLocalTransaction: (t: Transaction) => void;
     deleteLocalTransaction: (id: string) => void;
     deleteLocalTransactions: (ids: string[]) => void;
-
     addLocalCategory: (c: Category) => void;
     addLocalCategories: (c: Category[]) => void;
     updateLocalCategory: (c: Category) => void;
     deleteLocalCategory: (id: string) => void;
-
     addLocalTruck: (t: Truck) => void;
     updateLocalTruck: (t: Truck) => void;
     deleteLocalTruck: (id: string) => void;
-
     addLocalAccount: (a: BankAccount) => void;
     updateLocalAccount: (a: BankAccount) => void;
     deleteLocalAccount: (id: string) => void;
-
-    // Entities
     addLocalEntity: (e: BusinessEntity) => Promise<void>;
     updateLocalEntity: (e: BusinessEntity) => Promise<void>;
     deleteLocalEntity: (id: string) => Promise<void>;
-
     updateLocalFiscalYear: (record: FiscalYearRecord) => void;
-    
-    // System Settings
     saveSystemSetting: (key: string, value: string) => Promise<void>;
 }
 
@@ -88,7 +76,6 @@ const DataContext = createContext<DataContextType>({
 
 export const useData = () => useContext(DataContext);
 
-// --- Local Storage Keys ---
 const KEYS = {
     TRANSACTIONS: 'local_transactions',
     CATEGORIES: 'local_categories',
@@ -105,11 +92,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const [accounts, setAccounts] = useState<BankAccount[]>([]);
     const [businessEntities, setBusinessEntities] = useState<BusinessEntity[]>([]);
     const [fiscalYearRecords, setFiscalYearRecords] = useState<FiscalYearRecord[]>([]);
-    
     const [loading, setLoading] = useState(true);
     const [reportFilter, setReportFilter] = useState<ReportFilter | null>(null);
 
-    // --- Persistence Helpers ---
     const loadLocal = <T,>(key: string, defaultData: T): T => {
         try {
             const stored = localStorage.getItem(key);
@@ -123,36 +108,18 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         } catch (e) { console.error("Save failed", e); }
     };
 
-    // --- Fetch Data ---
     const fetchData = async () => {
         setLoading(true);
-
-        // Always load Fiscal Years locally for now
         const localFiscalYears = loadLocal(KEYS.FISCAL_YEARS, []);
         setFiscalYearRecords(localFiscalYears);
 
         if (!isSupabaseConfigured || !supabase) {
-            console.log("Using Local/Mock Data (Demo Mode)");
-            
             const localEntities = loadLocal(KEYS.ENTITIES, mockEntities);
             setBusinessEntities(localEntities);
-
-            const localTrans = loadLocal(KEYS.TRANSACTIONS, mockTransactions);
-            setTransactions(localTrans);
-
-            const localCats = loadLocal(KEYS.CATEGORIES, allCategories);
-            setCategories(localCats);
-
-            const localTrucks = loadLocal(KEYS.TRUCKS, mockTrucks);
-            setTrucks(localTrucks);
-
-            const localAccounts = loadLocal(KEYS.ACCOUNTS, mockAccounts);
-            const safeAccounts = localAccounts.map((a: BankAccount) => ({
-                ...a,
-                businessEntityId: a.businessEntityId || (localEntities.length > 0 ? localEntities[0].id : undefined)
-            }));
-            setAccounts(safeAccounts);
-
+            setTransactions(loadLocal(KEYS.TRANSACTIONS, mockTransactions));
+            setCategories(loadLocal(KEYS.CATEGORIES, allCategories));
+            setTrucks(loadLocal(KEYS.TRUCKS, mockTrucks));
+            setAccounts(loadLocal(KEYS.ACCOUNTS, mockAccounts));
             setLoading(false);
             return;
         }
@@ -166,32 +133,31 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 supabase.from('app_settings').select('*')
             ]);
 
-            if (settingRes.data) {
-                settingRes.data.forEach((setting: any) => {
-                    localStorage.setItem(setting.key, setting.value);
-                });
-            }
-
-            if (entRes.data && entRes.data.length > 0) {
+            if (entRes.data) {
                 const mappedEntities = entRes.data.map((e: any) => ({
                     id: e.id,
                     name: e.name,
                     structure: e.structure,
                     taxForm: e.tax_form,
-                    ein: e.ein
+                    ein: e.ein,
+                    email: e.email,
+                    phone: e.phone,
+                    website: e.website,
+                    address: e.address,
+                    city: e.city,
+                    state: e.state,
+                    zip: e.zip,
+                    logoUrl: e.logo_url
                 }));
                 setBusinessEntities(mappedEntities);
-            } else {
-                setBusinessEntities(loadLocal(KEYS.ENTITIES, mockEntities));
             }
 
             if (catRes.data) {
-                const mappedCats = catRes.data.map((c: any) => ({
+                setCategories(catRes.data.map((c: any) => ({
                     ...c,
                     type: c.type as TransactionType,
-                    isTaxDeductible: c.is_tax_deductible !== undefined ? c.is_tax_deductible : (c.type === 'Expense')
-                }));
-                setCategories(mappedCats);
+                    isTaxDeductible: c.is_tax_deductible
+                })));
             }
 
             if (truckRes.data) {
@@ -206,15 +172,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 })));
             }
 
-            const { data: transData, error } = await supabase
-                .from('transactions')
-                .select(`*, categories:category_id(*), trucks:truck_id(*)`)
-                .order('date', { ascending: false });
-
-            if (error) throw error;
-
+            const { data: transData } = await supabase.from('transactions').select(`*, categories:category_id(*), trucks:truck_id(*)`).order('date', { ascending: false });
             if (transData) {
-                const formatted: Transaction[] = transData.map((t: any) => ({
+                setTransactions(transData.map((t: any) => ({
                     id: t.id,
                     date: t.date,
                     description: t.description,
@@ -223,145 +183,15 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     accountId: t.account_id,
                     toAccountId: t.to_account_id,
                     receipts: t.receipts || [],
-                    category: t.categories ? { 
-                        id: t.categories.id, 
-                        name: t.categories.name, 
-                        type: t.categories.type as TransactionType,
-                        isTaxDeductible: t.categories.is_tax_deductible
-                    } : undefined,
-                    truck: t.trucks ? {
-                        id: t.trucks.id,
-                        unitNumber: t.trucks.unit_number,
-                        make: t.trucks.make,
-                        model: t.trucks.model,
-                        year: t.trucks.year
-                    } : undefined
-                }));
-                setTransactions(formatted);
+                    category: t.categories ? { id: t.categories.id, name: t.categories.name, type: t.categories.type as TransactionType, isTaxDeductible: t.categories.is_tax_deductible } : undefined,
+                    truck: t.trucks ? { id: t.trucks.id, unitNumber: t.trucks.unit_number, make: t.trucks.make, model: t.trucks.model, year: t.trucks.year } : undefined
+                })));
             }
-
         } catch (error) {
             console.error("Supabase Load Error", error);
-            setTransactions(loadLocal(KEYS.TRANSACTIONS, mockTransactions));
-            setCategories(loadLocal(KEYS.CATEGORIES, allCategories));
-            setBusinessEntities(loadLocal(KEYS.ENTITIES, mockEntities));
         } finally {
             setLoading(false);
         }
-    };
-
-    // --- Updaters with Robust Functional State Updates ---
-
-    const saveSystemSetting = async (key: string, value: string) => {
-        localStorage.setItem(key, value);
-        if (isSupabaseConfigured && supabase) {
-            try {
-                const { error } = await supabase.from('app_settings').upsert({ key, value }, { onConflict: 'key' });
-                if (error) throw error;
-            } catch (e) { console.error("Failed to save setting to Supabase", e); }
-        }
-    };
-
-    const addLocalTransaction = (t: Transaction) => {
-        setTransactions(prev => {
-            const next = [t, ...prev].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-            saveLocal(KEYS.TRANSACTIONS, next);
-            return next;
-        });
-    };
-    const updateLocalTransaction = (t: Transaction) => {
-        setTransactions(prev => {
-            const next = prev.map(item => item.id === t.id ? t : item);
-            saveLocal(KEYS.TRANSACTIONS, next);
-            return next;
-        });
-    };
-    const deleteLocalTransaction = (id: string) => {
-        setTransactions(prev => {
-            const next = prev.filter(item => item.id !== id);
-            saveLocal(KEYS.TRANSACTIONS, next);
-            return next;
-        });
-    };
-    const deleteLocalTransactions = (ids: string[]) => {
-        setTransactions(prev => {
-            const next = prev.filter(item => !ids.includes(item.id));
-            saveLocal(KEYS.TRANSACTIONS, next);
-            return next;
-        });
-    };
-
-    const addLocalCategory = (c: Category) => {
-        setCategories(prev => {
-            const next = [...prev, c];
-            saveLocal(KEYS.CATEGORIES, next);
-            return next;
-        });
-    };
-    const addLocalCategories = (cList: Category[]) => {
-        setCategories(prev => {
-            const next = [...prev, ...cList];
-            saveLocal(KEYS.CATEGORIES, next);
-            return next;
-        });
-    };
-    const updateLocalCategory = (c: Category) => {
-        setCategories(prev => {
-            const next = prev.map(item => item.id === c.id ? c : item);
-            saveLocal(KEYS.CATEGORIES, next);
-            return next;
-        });
-    };
-    const deleteLocalCategory = (id: string) => {
-        setCategories(prev => {
-            const next = prev.filter(item => item.id !== id);
-            saveLocal(KEYS.CATEGORIES, next);
-            return next;
-        });
-    };
-
-    const addLocalTruck = (t: Truck) => {
-        setTrucks(prev => {
-            const next = [...prev, t];
-            saveLocal(KEYS.TRUCKS, next);
-            return next;
-        });
-    };
-    const updateLocalTruck = (t: Truck) => {
-        setTrucks(prev => {
-            const next = prev.map(item => item.id === t.id ? t : item);
-            saveLocal(KEYS.TRUCKS, next);
-            return next;
-        });
-    };
-    const deleteLocalTruck = (id: string) => {
-        setTrucks(prev => {
-            const next = prev.filter(item => item.id !== id);
-            saveLocal(KEYS.TRUCKS, next);
-            return next;
-        });
-    };
-
-    const addLocalAccount = (a: BankAccount) => {
-        setAccounts(prev => {
-            const next = [...prev, a];
-            saveLocal(KEYS.ACCOUNTS, next);
-            return next;
-        });
-    };
-    const updateLocalAccount = (a: BankAccount) => {
-        setAccounts(prev => {
-            const next = prev.map(item => item.id === a.id ? a : item);
-            saveLocal(KEYS.ACCOUNTS, next);
-            return next;
-        });
-    };
-    const deleteLocalAccount = (id: string) => {
-        setAccounts(prev => {
-            const next = prev.filter(item => item.id !== id);
-            saveLocal(KEYS.ACCOUNTS, next);
-            return next;
-        });
     };
 
     const addLocalEntity = async (e: BusinessEntity) => {
@@ -373,15 +203,22 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         if (isSupabaseConfigured && supabase) {
             try {
-                const { error } = await supabase.from('business_entities').insert([{
+                await supabase.from('business_entities').insert([{
                     id: e.id,
                     name: e.name,
                     structure: e.structure,
                     tax_form: e.taxForm,
-                    ein: e.ein
+                    ein: e.ein,
+                    email: e.email,
+                    phone: e.phone,
+                    website: e.website,
+                    address: e.address,
+                    city: e.city,
+                    state: e.state,
+                    zip: e.zip,
+                    logo_url: e.logoUrl
                 }]);
-                if (error) throw error;
-            } catch (err) { console.error("DB Save Entity Error", err); }
+            } catch (err) { console.error(err); }
         }
     };
 
@@ -394,14 +231,21 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         if (isSupabaseConfigured && supabase) {
             try {
-                const { error } = await supabase.from('business_entities').update({
+                await supabase.from('business_entities').update({
                     name: e.name,
                     structure: e.structure,
                     tax_form: e.taxForm,
-                    ein: e.ein
+                    ein: e.ein,
+                    email: e.email,
+                    phone: e.phone,
+                    website: e.website,
+                    address: e.address,
+                    city: e.city,
+                    state: e.state,
+                    zip: e.zip,
+                    logo_url: e.logoUrl
                 }).eq('id', e.id);
-                if (error) throw error;
-            } catch (err) { console.error("DB Update Entity Error", err); }
+            } catch (err) { console.error(err); }
         }
     };
 
@@ -411,42 +255,36 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             saveLocal(KEYS.ENTITIES, next);
             return next;
         });
-
         if (isSupabaseConfigured && supabase) {
-            try {
-                const { error } = await supabase.from('business_entities').delete().eq('id', id);
-                if (error) throw error;
-            } catch (err) { console.error("DB Delete Entity Error", err); }
+            try { await supabase.from('business_entities').delete().eq('id', id); } catch (err) { console.error(err); }
         }
     };
 
-    const updateLocalFiscalYear = (record: FiscalYearRecord) => {
-        setFiscalYearRecords(prev => {
-            const others = prev.filter(r => r.year !== record.year);
-            const next = [...others, record];
-            saveLocal(KEYS.FISCAL_YEARS, next);
-            return next;
-        });
-    };
+    // Keep other local CRUD methods as functional updates...
+    const addLocalTransaction = (t: Transaction) => setTransactions(prev => { const next = [t, ...prev].sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()); saveLocal(KEYS.TRANSACTIONS, next); return next; });
+    const updateLocalTransaction = (t: Transaction) => setTransactions(prev => { const next = prev.map(item => item.id === t.id ? t : item); saveLocal(KEYS.TRANSACTIONS, next); return next; });
+    const deleteLocalTransaction = (id: string) => setTransactions(prev => { const next = prev.filter(item => item.id !== id); saveLocal(KEYS.TRANSACTIONS, next); return next; });
+    const deleteLocalTransactions = (ids: string[]) => setTransactions(prev => { const next = prev.filter(item => !ids.includes(item.id)); saveLocal(KEYS.TRANSACTIONS, next); return next; });
+    const addLocalCategory = (c: Category) => setCategories(prev => { const next = [...prev, c]; saveLocal(KEYS.CATEGORIES, next); return next; });
+    const addLocalCategories = (cList: Category[]) => setCategories(prev => { const next = [...prev, ...cList]; saveLocal(KEYS.CATEGORIES, next); return next; });
+    const updateLocalCategory = (c: Category) => setCategories(prev => { const next = prev.map(item => item.id === c.id ? c : item); saveLocal(KEYS.CATEGORIES, next); return next; });
+    const deleteLocalCategory = (id: string) => setCategories(prev => { const next = prev.filter(item => item.id !== id); saveLocal(KEYS.CATEGORIES, next); return next; });
+    const addLocalTruck = (t: Truck) => setTrucks(prev => { const next = [...prev, t]; saveLocal(KEYS.TRUCKS, next); return next; });
+    const updateLocalTruck = (t: Truck) => setTrucks(prev => { const next = prev.map(item => item.id === t.id ? t : item); saveLocal(KEYS.TRUCKS, next); return next; });
+    const deleteLocalTruck = (id: string) => setTrucks(prev => { const next = prev.filter(item => item.id !== id); saveLocal(KEYS.TRUCKS, next); return next; });
+    const addLocalAccount = (a: BankAccount) => setAccounts(prev => { const next = [...prev, a]; saveLocal(KEYS.ACCOUNTS, next); return next; });
+    const updateLocalAccount = (a: BankAccount) => setAccounts(prev => { const next = prev.map(item => item.id === a.id ? a : item); saveLocal(KEYS.ACCOUNTS, next); return next; });
+    const deleteLocalAccount = (id: string) => setAccounts(prev => { const next = prev.filter(item => item.id !== id); saveLocal(KEYS.ACCOUNTS, next); return next; });
+    const updateLocalFiscalYear = (record: FiscalYearRecord) => setFiscalYearRecords(prev => { const others = prev.filter(r => r.year !== record.year); const next = [...others, record]; saveLocal(KEYS.FISCAL_YEARS, next); return next; });
+    const saveSystemSetting = async (key: string, value: string) => { localStorage.setItem(key, value); if (isSupabaseConfigured && supabase) { try { await supabase.from('app_settings').upsert({ key, value }, { onConflict: 'key' }); } catch (e) { console.error(e); } } };
 
-    useEffect(() => {
-        fetchData();
-    }, []);
+    useEffect(() => { fetchData(); }, []);
 
     return (
         <DataContext.Provider value={{ 
-            transactions, categories, trucks, accounts, businessEntities, fiscalYearRecords, loading, 
-            refreshData: fetchData, reportFilter, setReportFilter,
-            
-            addLocalTransaction, updateLocalTransaction, deleteLocalTransaction, deleteLocalTransactions,
-            addLocalCategory, addLocalCategories, updateLocalCategory, deleteLocalCategory,
-            addLocalTruck, updateLocalTruck, deleteLocalTruck,
-            addLocalAccount, updateLocalAccount, deleteLocalAccount,
-            addLocalEntity, updateLocalEntity, deleteLocalEntity,
-            updateLocalFiscalYear,
-            saveSystemSetting
-        }}>
-            {children}
-        </DataContext.Provider>
+            transactions, categories, trucks, accounts, businessEntities, fiscalYearRecords, loading, refreshData: fetchData, reportFilter, setReportFilter,
+            addLocalTransaction, updateLocalTransaction, deleteLocalTransaction, deleteLocalTransactions, addLocalCategory, addLocalCategories, updateLocalCategory, deleteLocalCategory,
+            addLocalTruck, updateLocalTruck, deleteLocalTruck, addLocalAccount, updateLocalAccount, deleteLocalAccount, addLocalEntity, updateLocalEntity, deleteLocalEntity, updateLocalFiscalYear, saveSystemSetting
+        }}>{children}</DataContext.Provider>
     );
 };

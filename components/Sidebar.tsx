@@ -1,5 +1,6 @@
+
 import React, { useState, useEffect } from 'react';
-import { LayoutDashboard, FileText, BarChart2, Truck, UserCircle, ChevronDown, X, Tags, Landmark, CalendarRange, Wallet, LogOut, Settings } from 'lucide-react';
+import { LayoutDashboard, FileText, BarChart2, Truck, UserCircle, X, Tags, Landmark, CalendarRange, Wallet, LogOut, Settings, Building2 } from 'lucide-react';
 import { Page } from '../App';
 import { useAuth } from '../lib/AuthContext';
 
@@ -16,11 +17,11 @@ const NavItem: React.FC<{
   isActive: boolean;
   onClick: () => void;
 }> = ({ icon: Icon, label, isActive, onClick }) => {
-  // Helper to format label for display (e.g., "Tax" -> "Tax Reports")
   const formatLabel = (l: string) => {
       if (l === 'Tax') return 'Tax Reports';
       if (l === 'FiscalYears') return 'Fiscal Years';
       if (l === 'Accounts') return 'Bank Accounts';
+      if (l === 'Companies') return 'Business Profiles';
       return l;
   }
   const displayLabel = formatLabel(label);
@@ -51,7 +52,7 @@ const NavItem: React.FC<{
 const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage, isOpen, setIsOpen }) => {
   const { user, signOut } = useAuth();
   
-  const navItems: Page[] = ['Dashboard', 'Transactions', 'Reports', 'Trucks', 'Categories', 'Accounts', 'Tax', 'FiscalYears', 'Settings'];
+  const navItems: Page[] = ['Dashboard', 'Transactions', 'Reports', 'Trucks', 'Categories', 'Accounts', 'Companies', 'Tax', 'FiscalYears', 'Settings'];
 
   const navIcons: { [key in Page]: React.ElementType } = {
     Dashboard: LayoutDashboard,
@@ -60,6 +61,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage, isOpen, se
     Trucks: Truck,
     Categories: Tags,
     Accounts: Wallet,
+    Companies: Building2,
     Tax: Landmark,
     FiscalYears: CalendarRange,
     Settings: Settings,
@@ -70,26 +72,20 @@ const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage, isOpen, se
     setIsOpen(false); 
   };
 
-  // State to track if we are in mobile view
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
   useEffect(() => {
     const handleResize = () => {
       const mobile = window.innerWidth < 768;
       setIsMobile(mobile);
-      // If switching to desktop, ensure sidebar is 'open' conceptually (visible)
-      // but managed by CSS flow, so we don't need to force isOpen true, 
-      // just ensure the mobile toggle state doesn't interfere weirdly.
       if (!mobile && isOpen) {
-          setIsOpen(false); // Reset mobile toggle when going to desktop
+          setIsOpen(false);
       }
     };
-
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, [isOpen, setIsOpen]);
 
-  // Determine styles based on state
   const sidebarStyle: React.CSSProperties = isMobile 
     ? {
         width: '280px',
@@ -110,7 +106,6 @@ const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage, isOpen, se
 
   return (
     <>
-      {/* Overlay for mobile */}
       {isMobile && (
           <div
             className={`position-fixed top-0 start-0 w-100 h-100 bg-dark bg-opacity-50 d-print-none`}
@@ -139,7 +134,6 @@ const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage, isOpen, se
                 <small className="text-muted" style={{fontSize: '0.75rem', letterSpacing: '1px'}}>FLEET MANAGER</small>
               </div>
             </div>
-            {/* Close button only visible on mobile */}
             {isMobile && (
                 <button className="btn btn-link text-secondary p-0" onClick={() => setIsOpen(false)}>
                 <X size={24} />
@@ -173,13 +167,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage, isOpen, se
                         </small>
                     </div>
                 </div>
-                <button 
-                    onClick={() => signOut()} 
-                    className="btn btn-sm btn-link text-danger p-0"
-                    title="Sign Out"
-                >
-                    <LogOut size={18} />
-                </button>
+                <button onClick={() => signOut()} className="btn btn-sm btn-link text-danger p-0"><LogOut size={18} /></button>
             </div>
           </div>
         </div>

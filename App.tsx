@@ -8,15 +8,16 @@ import Categories from './components/Categories';
 import TaxReports from './components/TaxReports';
 import FiscalYears from './components/FiscalYears';
 import BankAccounts from './components/BankAccounts';
+import Companies from './components/Companies';
 import Settings from './components/Settings';
 import Header from './components/Header';
 import Login from './components/Login';
-import { Truck, FileText, LayoutDashboard, BarChart2, Tags, Landmark, CalendarRange, Wallet, Loader2, Settings as SettingsIcon } from 'lucide-react';
+import { Truck, FileText, LayoutDashboard, BarChart2, Tags, Landmark, CalendarRange, Wallet, Loader2, Settings as SettingsIcon, Building2 } from 'lucide-react';
 import Trucks from './components/Trucks';
 import { DataProvider } from './lib/DataContext';
 import { AuthProvider, useAuth } from './lib/AuthContext';
 
-export type Page = 'Dashboard' | 'Transactions' | 'Reports' | 'Trucks' | 'Categories' | 'Tax' | 'FiscalYears' | 'Accounts' | 'Settings';
+export type Page = 'Dashboard' | 'Transactions' | 'Reports' | 'Trucks' | 'Categories' | 'Tax' | 'FiscalYears' | 'Accounts' | 'Companies' | 'Settings';
 
 const MainLayout: React.FC = () => {
     const [activePage, setActivePage] = useState<Page>('Dashboard');
@@ -49,6 +50,8 @@ const MainLayout: React.FC = () => {
             return <Categories />;
         case 'Accounts':
             return <BankAccounts />;
+        case 'Companies':
+            return <Companies />;
         case 'Tax':
             return <TaxReports setActivePage={setActivePage} />;
         case 'FiscalYears':
@@ -69,6 +72,7 @@ const MainLayout: React.FC = () => {
         Tax: Landmark,
         FiscalYears: CalendarRange,
         Accounts: Wallet,
+        Companies: Building2,
         Settings: SettingsIcon,
     };
 
