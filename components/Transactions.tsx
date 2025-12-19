@@ -132,7 +132,7 @@ const TransactionFormModal: React.FC<TransactionFormModalProps> = ({ isOpen, onC
             `;
 
             const response = await ai.models.generateContent({
-                model: 'gemini-2.5-flash',
+                model: 'gemini-3-flash-preview',
                 contents: prompt,
                 config: {
                     responseMimeType: 'application/json',
@@ -534,7 +534,7 @@ const ImportTransactionsModal: React.FC<ImportTransactionsModalProps> = ({ isOpe
             `;
 
             const response = await ai.models.generateContent({
-                model: 'gemini-2.5-flash',
+                model: 'gemini-3-flash-preview',
                 contents: prompt,
                 config: {
                     responseMimeType: 'application/json',
@@ -927,7 +927,8 @@ const Transactions: React.FC = () => {
     const [viewReceiptsTransaction, setViewReceiptsTransaction] = useState<Transaction | null>(null);
 
     // Extract available years for filter
-    const availableYears = Array.from(new Set(transactions.map(t => new Date(t.date).getFullYear()))).sort((a: number, b: number) => b - a);
+    // Fix: Add explicit number[] cast to resolve 'unknown' inference and subsequent React element prop errors at line 1266
+    const availableYears: number[] = Array.from(new Set(transactions.map((t: any) => new Date(t.date).getFullYear()))).sort((a: number, b: number) => b - a) as number[];
 
     // Check for incoming report filters on mount
     useEffect(() => {

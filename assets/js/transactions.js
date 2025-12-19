@@ -1,3 +1,4 @@
+
 import { supabase, formatCurrency, formatDate, store } from './app.js';
 import { GoogleGenAI, Type } from "@google/genai";
 
@@ -166,11 +167,13 @@ document.getElementById('btn-analyze').addEventListener('click', async () => {
     btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span> Processing...';
 
     try {
-        const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
+        // Fix: Use process.env.API_KEY as per guidelines
+        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
         const prompt = `Extract transactions from text. JSON Array with keys: date(YYYY-MM-DD), description, amount(positive number), type(Income/Expense), categoryName. Text: ${text.substring(0, 5000)}`;
         
         const result = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+            // Fix: Use gemini-3-flash-preview as per guidelines
+            model: 'gemini-3-flash-preview',
             contents: prompt,
             config: { responseMimeType: 'application/json' }
         });

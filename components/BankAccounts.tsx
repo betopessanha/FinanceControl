@@ -11,7 +11,7 @@ import { supabase, isSupabaseConfigured } from '../lib/supabase';
 const BankAccounts: React.FC = () => {
     // Consume Data
     const { 
-        accounts, refreshData, businessEntities,
+        accounts, businessEntities,
         addLocalAccount, updateLocalAccount, deleteLocalAccount,
         addLocalEntity
     } = useData();
@@ -91,45 +91,18 @@ const BankAccounts: React.FC = () => {
         e.preventDefault();
         
         const accountId = editingAccount ? editingAccount.id : `acc-${Date.now()}`;
-        
-        // If user didn't select an entity but there are entities, warn or default?
-        // Let's assume it's optional but recommended.
-        
         const accountObj: BankAccount = {
             id: accountId,
             ...formData
         };
 
-        // 1. Optimistic Update
-        if (editingAccount) {
-            updateLocalAccount(accountObj);
-        } else {
-            addLocalAccount(accountObj);
-        }
+        // 1. Persist via Context Functions (Handles both local state and database)
+        const success = editingAccount 
+            ? await updateLocalAccount(accountObj) 
+            : await addLocalAccount(accountObj);
 
-        setIsModalOpen(false);
-
-        // 2. Persist to DB
-        if (isSupabaseConfigured && supabase) {
-            try {
-                const payload = { 
-                    name: formData.name, 
-                    type: formData.type, 
-                    initial_balance: formData.initialBalance,
-                    business_entity_id: formData.businessEntityId || null 
-                };
-
-                if (editingAccount) {
-                    const { error } = await supabase.from('accounts').update(payload).eq('id', editingAccount.id);
-                    if (error) throw error;
-                } else {
-                    const { error } = await supabase.from('accounts').insert([payload]);
-                    if (error) throw error;
-                }
-            } catch (error) {
-                console.error("Failed to save account to DB:", error);
-                alert("Saved locally, but failed to sync with database.");
-            }
+        if (success) {
+            setIsModalOpen(false);
         }
     };
 
@@ -139,12 +112,7 @@ const BankAccounts: React.FC = () => {
             return;
         }
         if (window.confirm('Are you sure you want to delete this account?')) {
-            deleteLocalAccount(id);
-            if (isSupabaseConfigured && supabase) {
-                try {
-                    await supabase.from('accounts').delete().eq('id', id);
-                } catch (error) { console.error(error); }
-            }
+            await deleteLocalAccount(id);
         }
     };
 
@@ -226,7 +194,6 @@ const BankAccounts: React.FC = () => {
                                             <h5 className="fw-bold text-dark mb-1">{acc.name}</h5>
                                             <span className="badge bg-light text-secondary border mb-3 me-2">{acc.type}</span>
                                             
-                                            {/* Entity Badge */}
                                             <span className="badge bg-info bg-opacity-10 text-info border border-info border-opacity-25 mb-3">
                                                 <Building2 size={10} className="me-1 mb-1" />
                                                 {getEntityName(acc.businessEntityId)}
@@ -375,11 +342,6 @@ const BankAccounts: React.FC = () => {
                                         <PlusCircle size={18} />
                                     </button>
                                 </div>
-                                {businessEntities.length === 0 && (
-                                    <div className="form-text text-danger small">
-                                        You must register a company first. Click +
-                                    </div>
-                                )}
                             </div>
                         </div>
 
@@ -396,7 +358,6 @@ const BankAccounts: React.FC = () => {
                                     step="0.01"
                                 />
                             </div>
-                            <div className="form-text text-muted">Starting balance when you began using this system.</div>
                         </div>
 
                         <div className="d-flex justify-content-end gap-2">

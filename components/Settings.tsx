@@ -92,33 +92,31 @@ CREATE TABLE IF NOT EXISTS app_settings (
   value text not null
 );
 
--- 2. Business Entities Table (EXPANDED)
+-- 2. Business Entities Table (Ensure ID is TEXT)
 CREATE TABLE IF NOT EXISTS business_entities (
   id text primary key,
   name text not null,
   structure text not null,
   tax_form text not null,
   ein text,
+  email text,
+  phone text,
+  website text,
+  address text,
+  city text,
+  state text,
+  zip text,
+  logo_url text,
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
-
--- SAFE MIGRATION: Add new detailed columns if they don't exist
-ALTER TABLE business_entities ADD COLUMN IF NOT EXISTS email text;
-ALTER TABLE business_entities ADD COLUMN IF NOT EXISTS phone text;
-ALTER TABLE business_entities ADD COLUMN IF NOT EXISTS website text;
-ALTER TABLE business_entities ADD COLUMN IF NOT EXISTS address text;
-ALTER TABLE business_entities ADD COLUMN IF NOT EXISTS city text;
-ALTER TABLE business_entities ADD COLUMN IF NOT EXISTS state text;
-ALTER TABLE business_entities ADD COLUMN IF NOT EXISTS zip text;
-ALTER TABLE business_entities ADD COLUMN IF NOT EXISTS logo_url text;
 
 -- 3. Categories Table
 CREATE TABLE IF NOT EXISTS categories (
   id text primary key default gen_random_uuid()::text,
   name text not null,
-  type text not null
+  type text not null,
+  is_tax_deductible boolean DEFAULT true
 );
-ALTER TABLE categories ADD COLUMN IF NOT EXISTS is_tax_deductible boolean DEFAULT true;
 
 -- 4. Trucks Table
 CREATE TABLE IF NOT EXISTS trucks (
@@ -129,14 +127,28 @@ CREATE TABLE IF NOT EXISTS trucks (
   year numeric
 );
 
--- 5. Accounts Table
+-- 5. Accounts Table (Fixing the BigInt vs Text relationship)
 CREATE TABLE IF NOT EXISTS accounts (
   id text primary key default gen_random_uuid()::text,
   name text not null,
   type text not null,
   initial_balance numeric default 0
 );
-ALTER TABLE accounts ADD COLUMN IF NOT EXISTS business_entity_id text REFERENCES business_entities(id) ON DELETE SET NULL;
+
+-- FORCE CORRECT TYPE FOR business_entity_id
+-- This logic converts BigInt columns to Text to support "ent-..." IDs
+DO $$ 
+BEGIN 
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='accounts' AND column_name='business_entity_id') THEN
+    IF (SELECT data_type FROM information_schema.columns WHERE table_name='accounts' AND column_name='business_entity_id') != 'text' THEN
+       -- Drop existing foreign key before changing type
+       ALTER TABLE accounts DROP COLUMN business_entity_id;
+       ALTER TABLE accounts ADD COLUMN business_entity_id text REFERENCES business_entities(id) ON DELETE SET NULL;
+    END IF;
+  ELSE
+    ALTER TABLE accounts ADD COLUMN business_entity_id text REFERENCES business_entities(id) ON DELETE SET NULL;
+  END IF;
+END $$;
 
 -- 6. Transactions Table
 CREATE TABLE IF NOT EXISTS transactions (
@@ -145,43 +157,46 @@ CREATE TABLE IF NOT EXISTS transactions (
   description text,
   amount numeric not null,
   type text not null,
-  account_id text REFERENCES accounts(id) ON DELETE CASCADE
+  account_id text REFERENCES accounts(id) ON DELETE CASCADE,
+  to_account_id text REFERENCES accounts(id) ON DELETE SET NULL,
+  category_id text REFERENCES categories(id) ON DELETE SET NULL,
+  truck_id text REFERENCES trucks(id) ON DELETE SET NULL,
+  receipts text[] DEFAULT array[]::text[]
 );
-ALTER TABLE transactions ADD COLUMN IF NOT EXISTS to_account_id text REFERENCES accounts(id) ON DELETE SET NULL;
-ALTER TABLE transactions ADD COLUMN IF NOT EXISTS category_id text REFERENCES categories(id) ON DELETE SET NULL;
-ALTER TABLE transactions ADD COLUMN IF NOT EXISTS truck_id text REFERENCES trucks(id) ON DELETE SET NULL;
-ALTER TABLE transactions ADD COLUMN IF NOT EXISTS receipts text[] DEFAULT array[]::text[];
 
--- 7. Security Policies (RLS)
+-- 7. Fiscal Year Records Table
+CREATE TABLE IF NOT EXISTS fiscal_year_records (
+  year integer primary key,
+  status text not null,
+  manual_balance numeric,
+  notes text,
+  updated_at timestamp with time zone default now()
+);
+
+-- 8. Enable Security
 ALTER TABLE app_settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE business_entities ENABLE ROW LEVEL SECURITY;
 ALTER TABLE categories ENABLE ROW LEVEL SECURITY;
 ALTER TABLE trucks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE accounts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE transactions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE fiscal_year_records ENABLE ROW LEVEL SECURITY;
 
--- 8. Policies Creation (Safe check)
 DO $$ 
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Enable all access' AND tablename = 'transactions') THEN
     CREATE POLICY "Enable all access" ON transactions FOR ALL USING (true) WITH CHECK (true);
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Enable all access' AND tablename = 'accounts') THEN
     CREATE POLICY "Enable all access" ON accounts FOR ALL USING (true) WITH CHECK (true);
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Enable all access' AND tablename = 'categories') THEN
     CREATE POLICY "Enable all access" ON categories FOR ALL USING (true) WITH CHECK (true);
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Enable all access' AND tablename = 'trucks') THEN
     CREATE POLICY "Enable all access" ON trucks FOR ALL USING (true) WITH CHECK (true);
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Enable all access' AND tablename = 'business_entities') THEN
     CREATE POLICY "Enable all access" ON business_entities FOR ALL USING (true) WITH CHECK (true);
-  END IF;
-   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Enable all access' AND tablename = 'app_settings') THEN
     CREATE POLICY "Enable all access" ON app_settings FOR ALL USING (true) WITH CHECK (true);
+    CREATE POLICY "Enable all access" ON fiscal_year_records FOR ALL USING (true) WITH CHECK (true);
   END IF;
 END $$;
+
+-- 9. Refresh PostgREST cache
+NOTIFY pgrst, 'reload schema';
 `.trim();
 
     const copyToClipboard = () => {
@@ -271,19 +286,24 @@ END $$;
                             </div>
                         </div>
                     </CardContent>
+                    <div className="card-footer bg-white border-0 px-4 pb-4">
+                        <div className="d-flex align-items-center gap-3">
+                            <button type="submit" className="btn btn-primary d-flex align-items-center px-4" disabled={isSaving}>
+                                {isSaving ? <Loader2 size={18} className="me-2 animate-spin"/> : <Save size={18} className="me-2" />}
+                                Save Settings
+                            </button>
+                            {saved && <span className="text-success d-flex align-items-center small fw-bold"><CheckCircle2 size={18} className="me-1" /> Saved!</span>}
+                        </div>
+                    </div>
                 </Card>
-                <div className="d-flex align-items-center gap-3">
-                    <button type="submit" className="btn btn-primary d-flex align-items-center px-4" disabled={isSaving}>
-                        {isSaving ? <Loader2 size={18} className="me-2 animate-spin"/> : <Save size={18} className="me-2" />}
-                        Save Settings
-                    </button>
-                    {saved && <span className="text-success d-flex align-items-center small fw-bold"><CheckCircle2 size={18} className="me-1" /> Saved!</span>}
-                </div>
             </form>
 
-            <Modal isOpen={showSchema} onClose={() => setShowSchema(false)} title="Update Database Structure (Safe Migration)" size="lg">
+            <Modal isOpen={showSchema} onClose={() => setShowSchema(false)} title="Restore Database Schema & Fix Types" size="lg">
                 <div className="mb-3">
-                    <p className="small text-muted">Run this SQL in Supabase SQL Editor to support detailed company profiles:</p>
+                    <p className="small text-muted">
+                        This script will fix the <strong>'invalid input syntax for type bigint'</strong> error by converting the company link column to the correct text format.
+                        Run this in your Supabase SQL Editor:
+                    </p>
                     <div className="position-relative">
                         <pre className="bg-light p-3 rounded border small text-dark mb-0" style={{maxHeight: '300px', overflowY: 'auto'}}><code>{dbSchemaSql}</code></pre>
                         <button className="btn btn-sm btn-light border position-absolute top-0 end-0 m-2 shadow-sm" onClick={copyToClipboard}>

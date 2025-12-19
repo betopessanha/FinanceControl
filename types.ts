@@ -34,7 +34,6 @@ export interface BusinessEntity {
     structure: LegalStructure;
     taxForm: string;
     ein?: string;
-    // New Detailed Fields
     email?: string;
     phone?: string;
     website?: string;

@@ -106,7 +106,8 @@ const Categories: React.FC = () => {
             `;
 
             const response = await ai.models.generateContent({
-                model: 'gemini-2.5-flash',
+                // Fix: Use gemini-3-flash-preview as per guidelines
+                model: 'gemini-3-flash-preview',
                 contents: prompt,
                 config: {
                     responseMimeType: 'application/json',
@@ -243,7 +244,7 @@ const Categories: React.FC = () => {
                      if (editingCategory) {
                         await supabase.from('categories').update(fallbackPayload).eq('id', editingCategory.id);
                     } else {
-                        await supabase.from('categories').insert([fallbackPayload]);
+                        await supabase.from('categories').insert(fallbackPayload);
                     }
                     // If fallback works, we are good (though tax status won't persist to cloud until DB is fixed)
                 } catch (fallbackError) {
@@ -500,4 +501,3 @@ const Categories: React.FC = () => {
 };
 
 export default Categories;
-    

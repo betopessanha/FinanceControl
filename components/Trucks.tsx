@@ -161,52 +161,19 @@ const Trucks: React.FC = () => {
             ...formData
         };
 
-        // 1. Optimistic Update (Always happens first)
-        if (editingTruck) {
-            updateLocalTruck(truckObj);
-        } else {
-            addLocalTruck(truckObj);
-        }
+        // Persist via Context Functions (Handles both local state and database)
+        const success = editingTruck 
+            ? await updateLocalTruck(truckObj) 
+            : await addLocalTruck(truckObj);
 
-        setIsModalOpen(false);
-
-        // 2. Persist to DB (if configured)
-        if (isSupabaseConfigured && supabase) {
-            try {
-                const payload = {
-                    unit_number: formData.unitNumber,
-                    make: formData.make,
-                    model: formData.model,
-                    year: formData.year
-                };
-
-                if (editingTruck) {
-                    await supabase.from('trucks').update(payload).eq('id', truckId);
-                } else {
-                    await supabase.from('trucks').insert([payload]);
-                }
-            } catch (error) {
-                console.error("Failed to save truck to DB", error);
-                // Do NOT refresh data here, or the local optimistic update disappears.
-                // Just log it, as the user is likely on a demo/offline connection.
-            }
+        if (success) {
+            setIsModalOpen(false);
         }
     };
 
     const handleDelete = async (id: string) => {
         if (window.confirm("Are you sure you want to delete this truck?")) {
-            // 1. Optimistic Delete
-            deleteLocalTruck(id);
-
-            // 2. DB Delete
-            if (isSupabaseConfigured && supabase) {
-                try {
-                    const { error } = await supabase.from('trucks').delete().eq('id', id);
-                    if (error) throw error;
-                } catch (error) {
-                    console.error("Failed to delete truck from DB", error);
-                }
-            }
+            await deleteLocalTruck(id);
         }
     };
 
