@@ -1,7 +1,8 @@
 
 import React from 'react';
-import { Bell, Menu, Search, Cloud, CloudOff, Database, ShieldCheck } from 'lucide-react';
+import { Bell, Menu, Search, Cloud, CloudOff, UserCircle, ShieldCheck } from 'lucide-react';
 import { useData } from '../lib/DataContext';
+import { useAuth } from '../lib/AuthContext';
 
 interface HeaderProps {
   title: string;
@@ -11,6 +12,7 @@ interface HeaderProps {
 
 const Header: React.FC<HeaderProps> = ({ title, icon: Icon, onMenuClick }) => {
   const { isCloudConnected } = useData();
+  const { user } = useAuth();
 
   return (
     <header className="navbar sticky-top bg-white border-bottom py-3 px-3 px-md-4 shadow-sm d-print-none">
@@ -58,19 +60,19 @@ const Header: React.FC<HeaderProps> = ({ title, icon: Icon, onMenuClick }) => {
         </div>
 
         <div className="d-flex align-items-center gap-3">
-          <div className="d-none d-md-block position-relative">
-              <span className="position-absolute top-50 start-0 translate-middle-y ps-3 text-muted">
-                  <Search size={16} />
-              </span>
-              <input 
-                  type="text" 
-                  placeholder="Universal search..." 
-                  className="form-control form-control-sm ps-5 bg-light border-0 rounded-pill"
-                  style={{ width: '240px' }}
-              />
+          <div className="d-none d-lg-flex align-items-center me-2 pe-3 border-end">
+              <div className="text-end me-3">
+                  <div className="fw-bold small text-dark">{user?.email?.split('@')[0]}</div>
+                  <div className="text-muted small d-flex align-items-center justify-content-end" style={{fontSize: '0.65rem'}}>
+                      <ShieldCheck size={10} className="me-1 text-success" /> Secure Session
+                  </div>
+              </div>
+              <div className="bg-light rounded-circle p-1 border shadow-sm">
+                  <UserCircle size={28} className="text-primary" />
+              </div>
           </div>
           
-          <button className="btn btn-light rounded-circle p-2 position-relative shadow-sm border">
+          <button className="btn btn-light rounded-circle p-2 position-relative shadow-sm border d-none d-sm-block">
             <Bell size={20} className="text-secondary" />
             <span className="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger border border-white" style={{fontSize: '0.5rem', padding: '0.35em 0.5em'}}>
               3

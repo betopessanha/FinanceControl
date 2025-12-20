@@ -1,5 +1,5 @@
 
-import React, { createContext, useContext, useEffect, useState, useRef, useCallback } from 'react';
+import React, { createContext, useContext, useEffect, useState } from 'react';
 import { supabase, isSupabaseConfigured } from './supabase';
 
 export type UserRole = 'admin' | 'user' | 'driver';
@@ -8,6 +8,7 @@ interface User {
     email: string;
     id: string;
     role: UserRole;
+    password?: string; // Only for local storage logic
 }
 
 interface AuthContextType {
@@ -16,6 +17,7 @@ interface AuthContextType {
     signIn: (email: string, password: string) => Promise<{ error: string | null }>;
     signUp: (email: string, password: string) => Promise<{ error: string | null, message?: string }>;
     signOut: () => Promise<void>;
+    updateLocalCredentials: (email: string, password: string) => void;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -24,6 +26,7 @@ const AuthContext = createContext<AuthContextType>({
     signIn: async () => ({ error: null }),
     signUp: async () => ({ error: null }),
     signOut: async () => {},
+    updateLocalCredentials: () => {},
 });
 
 export const useAuth = () => useContext(AuthContext);
@@ -37,35 +40,60 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             if (isSupabaseConfigured && supabase) await supabase.auth.signOut();
         } catch (e) {}
         setUser(null);
-        localStorage.removeItem('active_mock_user');
+        localStorage.removeItem('active_session_user');
+    };
+
+    const updateLocalCredentials = (email: string, password: string) => {
+        const localUsers = JSON.parse(localStorage.getItem('app_local_users') || '[]');
+        const newUser = { id: 'local-admin', email, password, role: 'admin' };
+        localStorage.setItem('app_local_users', JSON.stringify([newUser]));
+        
+        // If updating the currently logged in user
+        if (user && user.id === 'local-admin') {
+            setUser(newUser as any);
+            localStorage.setItem('active_session_user', JSON.stringify(newUser));
+        }
     };
 
     const signIn = async (email: string, password: string) => {
         const lowerEmail = email.toLowerCase().trim();
         
-        // --- EMERGENCY BYPASS (DO NOT CHANGE) ---
-        if ((lowerEmail === 'admin' && password === 'admin') || (lowerEmail === 'admin@trucking.io' && password === 'admin')) {
-            const mockUser: User = { id: 'mock-admin', email: 'admin@trucking.io', role: 'admin' };
-            setUser(mockUser);
-            localStorage.setItem('active_mock_user', JSON.stringify(mockUser));
-            return { error: null };
-        }
-
-        // Try Supabase if configured
+        // 1. Try Supabase first if configured
         if (isSupabaseConfigured && supabase) {
             try {
                 const { data, error } = await supabase.auth.signInWithPassword({ email: lowerEmail, password });
                 if (!error && data.user) {
-                    setUser({ id: data.user.id, email: data.user.email || lowerEmail, role: 'admin' });
+                    const cloudUser: User = { id: data.user.id, email: data.user.email || lowerEmail, role: 'admin' };
+                    setUser(cloudUser);
+                    localStorage.setItem('active_session_user', JSON.stringify(cloudUser));
                     return { error: null };
                 }
                 if (error) return { error: error.message };
             } catch (e) {
-                console.warn("Supabase auth connection error");
+                console.warn("Cloud auth error");
             }
         } 
 
-        return { error: "Invalid credentials. Try 'admin' / 'admin'" };
+        // 2. Try Local Registered Users
+        const localUsers = JSON.parse(localStorage.getItem('app_local_users') || '[]');
+        const found = localUsers.find((u: any) => u.email.toLowerCase() === lowerEmail && u.password === password);
+        
+        if (found) {
+            const sessionUser = { id: found.id, email: found.email, role: found.role };
+            setUser(sessionUser as any);
+            localStorage.setItem('active_session_user', JSON.stringify(sessionUser));
+            return { error: null };
+        }
+
+        // 3. Hidden Emergency Bypass (Initial Setup only if no local users exist)
+        if (localUsers.length === 0 && lowerEmail === 'admin' && password === 'admin') {
+            const initialAdmin = { id: 'local-admin', email: 'admin', role: 'admin' };
+            setUser(initialAdmin as any);
+            localStorage.setItem('active_session_user', JSON.stringify(initialAdmin));
+            return { error: null };
+        }
+
+        return { error: "Invalid credentials. Please check your user and password." };
     };
 
     const signUp = async (email: string, password: string) => {
@@ -77,23 +105,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             } catch (e) {
                 return { error: "Could not connect to cloud." };
             }
+        } else {
+            // Local Sign Up
+            const localUsers = JSON.parse(localStorage.getItem('app_local_users') || '[]');
+            if (localUsers.some((u: any) => u.email === email)) {
+                return { error: "User already exists." };
+            }
+            const newUser = { id: `local-${Date.now()}`, email, password, role: 'admin' };
+            localStorage.setItem('app_local_users', JSON.stringify([...localUsers, newUser]));
+            return { error: null, message: "Local account created successfully. You can now log in." };
         }
-        return { error: "Sign up is only available in Cloud Mode. Use admin/admin for local demo." };
     };
 
     useEffect(() => {
         const initAuth = async () => {
-            // Priority 1: Local Session
-            const stored = localStorage.getItem('active_mock_user');
+            const stored = localStorage.getItem('active_session_user');
             if (stored) {
                 try {
                     setUser(JSON.parse(stored));
                     setLoading(false);
                     return;
-                } catch (e) { localStorage.removeItem('active_mock_user'); }
+                } catch (e) { localStorage.removeItem('active_session_user'); }
             }
 
-            // Priority 2: Supabase (only if configured)
             if (isSupabaseConfigured && supabase) {
                 try {
                     const { data: { session } } = await supabase.auth.getSession();
@@ -102,14 +136,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     }
                 } catch (e) {}
             }
-            
             setLoading(false);
         };
         initAuth();
     }, []);
 
     return (
-        <AuthContext.Provider value={{ user, loading, signIn, signUp, signOut: handleSignOut }}>
+        <AuthContext.Provider value={{ user, loading, signIn, signUp, signOut: handleSignOut, updateLocalCredentials }}>
             {children}
         </AuthContext.Provider>
     );
