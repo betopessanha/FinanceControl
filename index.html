@@ -5,8 +5,11 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Trucking.io | US Enterprise Accounting</title>
+    <title>Trucking.io | Ultra-Premium Fleet Finance</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <script type="importmap">
 {
   "imports": {
@@ -23,11 +26,118 @@
 }
 </script>
     <style>
-      body { background-color: #f8f9fa; font-family: 'Inter', -apple-system, sans-serif; }
-      .hover-shadow:hover { box-shadow: 0 .5rem 1rem rgba(0,0,0,.08)!important; }
-      .transition-all { transition: all 0.2s ease-in-out; }
-      .sidebar { width: 280px; z-index: 1000; }
-      @media print { .d-print-none { display: none !important; } }
+      :root {
+        --brand-primary: #000000;
+        --brand-accent: #3b82f6;
+        --brand-success: #10b981;
+        --brand-danger: #f43f5e;
+        --bg-ultra: #ffffff;
+        --bg-subtle: #f9fafb;
+        --border-glass: rgba(0, 0, 0, 0.05);
+        --text-main: #111827;
+        --text-muted: #6b7280;
+      }
+      
+      body { 
+        background-color: var(--bg-ultra); 
+        font-family: 'Plus Jakarta Sans', sans-serif;
+        color: var(--text-main);
+        -webkit-font-smoothing: antialiased;
+        letter-spacing: -0.02em;
+      }
+
+      .sidebar { 
+        background-color: var(--bg-ultra);
+        border-right: 1px solid var(--border-glass);
+        width: 260px;
+      }
+
+      .nav-link {
+        color: var(--text-muted) !important;
+        font-size: 0.875rem;
+        font-weight: 500;
+        padding: 0.8rem 1.2rem !important;
+        margin: 4px 12px;
+        transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+        border-radius: 12px !important;
+        display: flex;
+        align-items: center;
+      }
+
+      .nav-link:hover {
+        background-color: var(--bg-subtle) !important;
+        color: var(--brand-primary) !important;
+        transform: translateX(4px);
+      }
+
+      .nav-link.active {
+        background-color: var(--brand-primary) !important;
+        color: white !important;
+        box-shadow: 0 10px 20px -5px rgba(0, 0, 0, 0.15);
+      }
+
+      .card {
+        border: 1px solid var(--border-glass);
+        border-radius: 20px;
+        background: white;
+        box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05);
+        transition: all 0.3s ease;
+      }
+
+      .card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.05), 0 10px 10px -5px rgba(0, 0, 0, 0.02);
+      }
+
+      .btn-primary {
+        background-color: var(--brand-primary);
+        border: none;
+        font-weight: 700;
+        border-radius: 12px;
+        padding: 0.75rem 1.5rem;
+        letter-spacing: -0.01em;
+      }
+
+      .btn-primary:hover {
+        background-color: #333;
+        transform: translateY(-1px);
+      }
+
+      .glass-header {
+        background: rgba(255, 255, 255, 0.8);
+        backdrop-filter: blur(12px);
+        border-bottom: 1px solid var(--border-glass);
+      }
+
+      .stat-value {
+        font-size: 2.25rem;
+        font-weight: 800;
+        letter-spacing: -0.04em;
+      }
+
+      .animate-slide-up {
+        animation: slideUp 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+      }
+
+      @keyframes slideUp {
+        from { opacity: 0; transform: translateY(20px) scale(0.98); }
+        to { opacity: 1; transform: translateY(0) scale(1); }
+      }
+
+      /* Custom Checkbox */
+      .form-check-input:checked {
+        background-color: var(--brand-primary);
+        border-color: var(--brand-primary);
+      }
+
+      ::-webkit-scrollbar { width: 5px; }
+      ::-webkit-scrollbar-track { background: transparent; }
+      ::-webkit-scrollbar-thumb { background: #e5e7eb; border-radius: 10px; }
+      ::-webkit-scrollbar-thumb:hover { background: #d1d5db; }
+
+      @media (max-width: 768px) {
+        .sidebar { width: 100%; }
+      }
     </style>
   </head>
   <body>

@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { LayoutDashboard, FileText, BarChart2, Truck, UserCircle, X, Tags, Landmark, CalendarRange, Wallet, LogOut, Settings, Building2 } from 'lucide-react';
+import { LayoutDashboard, FileText, BarChart2, Truck, UserCircle, X, Tags, Landmark, CalendarRange, Wallet, LogOut, Settings, Building2, ChevronRight, Zap } from 'lucide-react';
 import { Page } from '../App';
 import { useAuth } from '../lib/AuthContext';
 
@@ -17,32 +17,21 @@ const NavItem: React.FC<{
   isActive: boolean;
   onClick: () => void;
 }> = ({ icon: Icon, label, isActive, onClick }) => {
-  const formatLabel = (l: string) => {
-      if (l === 'Tax') return 'Tax Reports';
-      if (l === 'FiscalYears') return 'Fiscal Years';
-      if (l === 'Accounts') return 'Bank Accounts';
-      if (l === 'Companies') return 'Business Profiles';
-      return l;
-  }
-  const displayLabel = formatLabel(label);
+  const displayLabel = label === 'FiscalYears' ? 'Periods' : label === 'Tax' ? 'Tax Hub' : label;
 
   return (
-    <li className="nav-item mb-1">
+    <li className="nav-item">
       <a
         href="#"
-        className={`nav-link d-flex align-items-center px-3 py-2 rounded-3 ${
-          isActive
-            ? 'active bg-primary text-white shadow-sm'
-            : 'text-secondary hover-bg-light'
-        }`}
+        className={`nav-link ${isActive ? 'active' : ''}`}
         onClick={(e) => {
           e.preventDefault();
           onClick();
         }}
-        style={{ transition: 'all 0.2s' }}
       >
-        <Icon className={`me-3 ${isActive ? 'text-white' : 'text-secondary'}`} size={20} />
-        <span className="fw-medium">{displayLabel}</span>
+        <Icon className="me-3" size={18} />
+        <span className="flex-grow-1">{displayLabel}</span>
+        {isActive && <div className="rounded-circle bg-white opacity-25" style={{width: 6, height: 6}}></div>}
       </a>
     </li>
   );
@@ -51,21 +40,6 @@ const NavItem: React.FC<{
 
 const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage, isOpen, setIsOpen }) => {
   const { user, signOut } = useAuth();
-  
-  const navItems: Page[] = ['Dashboard', 'Transactions', 'Reports', 'Trucks', 'Categories', 'Accounts', 'Companies', 'Tax', 'FiscalYears', 'Settings'];
-
-  const navIcons: { [key in Page]: React.ElementType } = {
-    Dashboard: LayoutDashboard,
-    Transactions: FileText,
-    Reports: BarChart2,
-    Trucks: Truck,
-    Categories: Tags,
-    Accounts: Wallet,
-    Companies: Building2,
-    Tax: Landmark,
-    FiscalYears: CalendarRange,
-    Settings: Settings,
-  };
   
   const handleNavigation = (page: Page) => {
     setActivePage(page);
@@ -76,100 +50,65 @@ const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage, isOpen, se
 
   useEffect(() => {
     const handleResize = () => {
-      const mobile = window.innerWidth < 768;
-      setIsMobile(mobile);
-      if (!mobile && isOpen) {
-          setIsOpen(false);
-      }
+      setIsMobile(window.innerWidth < 768);
     };
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
-  }, [isOpen, setIsOpen]);
-
-  const sidebarStyle: React.CSSProperties = isMobile 
-    ? {
-        width: '280px',
-        zIndex: 1040,
-        transition: 'transform 0.3s ease-in-out',
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        height: '100%',
-        transform: isOpen ? 'translateX(0)' : 'translateX(-100%)',
-      }
-    : {
-        width: '280px',
-        position: 'relative',
-        transform: 'none',
-        height: '100%',
-    };
+  }, []);
 
   return (
     <>
-      {isMobile && (
-          <div
-            className={`position-fixed top-0 start-0 w-100 h-100 bg-dark bg-opacity-50 d-print-none`}
-            style={{ 
-                zIndex: 1030,
-                opacity: isOpen ? 1 : 0,
-                visibility: isOpen ? 'visible' : 'hidden',
-                transition: 'opacity 0.3s ease-in-out, visibility 0.3s ease-in-out'
-            }}
-            onClick={() => setIsOpen(false)}
-          ></div>
+      {isMobile && isOpen && (
+          <div className="position-fixed top-0 start-0 w-100 h-100 bg-black bg-opacity-40" style={{ zIndex: 1040 }} onClick={() => setIsOpen(false)}></div>
       )}
 
-      <aside
-        className="d-flex flex-column flex-shrink-0 bg-white border-end shadow-sm h-100 d-print-none"
-        style={sidebarStyle}
-      >
-        <div className="d-flex flex-column h-100">
-          <div className="d-flex align-items-center justify-content-between p-4 border-bottom">
-            <div className="d-flex align-items-center">
-              <div className="bg-primary bg-gradient text-white rounded p-2 d-flex align-items-center justify-content-center shadow-sm">
-                  <Truck size={24} />
-              </div>
-              <div className="ms-3 lh-1">
-                <h5 className="mb-0 fw-bold text-dark">Trucking<span className="text-primary">.io</span></h5>
-                <small className="text-muted" style={{fontSize: '0.75rem', letterSpacing: '1px'}}>FLEET MANAGER</small>
-              </div>
+      <aside className={`sidebar shadow-sm d-flex flex-column h-100 d-print-none ${isMobile ? (isOpen ? 'position-fixed start-0 top-0' : 'position-fixed start-n100 top-0') : ''}`} style={{ zIndex: 1050, transition: 'all 0.4s cubic-bezier(0.16, 1, 0.3, 1)', left: isMobile && !isOpen ? '-260px' : '0' }}>
+        <div className="p-4 d-flex align-items-center justify-content-between">
+          <div className="d-flex align-items-center gap-3">
+            <div className="bg-black text-white p-2 rounded-3 d-flex align-items-center justify-content-center shadow-lg">
+                <Zap size={20} fill="white" />
             </div>
-            {isMobile && (
-                <button className="btn btn-link text-secondary p-0" onClick={() => setIsOpen(false)}>
-                <X size={24} />
-                </button>
-            )}
+            <h5 className="mb-0 fw-800 tracking-tight text-black">TRUCKING<span className="text-muted">.IO</span></h5>
           </div>
+          {isMobile && <button className="btn btn-link text-dark p-0" onClick={() => setIsOpen(false)}><X size={20} /></button>}
+        </div>
 
-          <div className="flex-grow-1 overflow-auto p-3">
-            <ul className="nav nav-pills flex-column">
-              {navItems.map((item) => (
-                <NavItem
-                  key={item}
-                  icon={navIcons[item]}
-                  label={item}
-                  isActive={activePage === item}
-                  onClick={() => handleNavigation(item)}
-                />
+        <div className="flex-grow-1 overflow-auto py-2">
+            <div className="px-4 mb-3"><small className="text-uppercase fw-800 text-muted" style={{fontSize: '0.65rem', letterSpacing: '0.1em'}}>Insights</small></div>
+            <ul className="nav flex-column mb-4">
+              {['Dashboard', 'Transactions', 'Reports'].map((item) => (
+                <NavItem key={item} icon={item === 'Dashboard' ? LayoutDashboard : item === 'Transactions' ? FileText : BarChart2} label={item as Page} isActive={activePage === item} onClick={() => handleNavigation(item as Page)} />
               ))}
             </ul>
-          </div>
 
-          <div className="p-3 border-top">
-            <div className="d-flex align-items-center justify-content-between p-2 rounded bg-light">
-                <div className="d-flex align-items-center overflow-hidden">
-                    <div className="bg-white rounded-circle d-flex align-items-center justify-content-center border" style={{width: 32, height: 32}}>
-                        <UserCircle className="text-secondary" size={20} />
-                    </div>
-                    <div className="ms-2 overflow-hidden">
-                        <small className="text-muted text-truncate d-block" style={{fontSize: '0.75rem', maxWidth: '140px'}}>
-                            {user?.email || 'User'}
-                        </small>
+            <div className="px-4 mb-3"><small className="text-uppercase fw-800 text-muted" style={{fontSize: '0.65rem', letterSpacing: '0.1em'}}>Fleet Operations</small></div>
+            <ul className="nav flex-column mb-4">
+              {['Trucks', 'Accounts', 'Companies'].map((item) => (
+                <NavItem key={item} icon={item === 'Trucks' ? Truck : item === 'Accounts' ? Wallet : Building2} label={item as Page} isActive={activePage === item} onClick={() => handleNavigation(item as Page)} />
+              ))}
+            </ul>
+
+            <div className="px-4 mb-3"><small className="text-uppercase fw-800 text-muted" style={{fontSize: '0.65rem', letterSpacing: '0.1em'}}>System</small></div>
+            <ul className="nav flex-column">
+              {['Tax', 'FiscalYears', 'Settings'].map((item) => (
+                <NavItem key={item} icon={item === 'Tax' ? Landmark : item === 'FiscalYears' ? CalendarRange : Settings} label={item as Page} isActive={activePage === item} onClick={() => handleNavigation(item as Page)} />
+              ))}
+            </ul>
+        </div>
+
+        <div className="p-4 mt-auto">
+            <div className="bg-subtle p-3 rounded-4 border">
+                <div className="d-flex align-items-center gap-3 mb-3">
+                    <div className="bg-black rounded-circle p-1"><UserCircle className="text-white" size={24} /></div>
+                    <div className="overflow-hidden">
+                        <p className="fw-700 text-black mb-0 text-truncate small">{user?.email?.split('@')[0]}</p>
+                        <p className="text-muted mb-0 small" style={{fontSize: '0.7rem'}}>Administrator</p>
                     </div>
                 </div>
-                <button onClick={() => signOut()} className="btn btn-sm btn-link text-danger p-0"><LogOut size={18} /></button>
+                <button onClick={() => signOut()} className="btn btn-sm btn-white w-100 border fw-bold text-danger d-flex align-items-center justify-content-center">
+                    <LogOut size={14} className="me-2" /> Log Out
+                </button>
             </div>
-          </div>
         </div>
       </aside>
     </>
