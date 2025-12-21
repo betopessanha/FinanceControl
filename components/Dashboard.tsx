@@ -1,10 +1,11 @@
 
-import React from 'react';
-import { TrendingUp, TrendingDown, ArrowUpRight, ArrowDownRight, ArrowRight, Plus, Calendar, Filter, Download } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { TrendingUp, TrendingDown, ArrowUpRight, ArrowDownRight, ArrowRight, Plus, Calendar, Filter, Download, Loader2 } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { formatCurrency, formatDate } from '../lib/utils';
+import { formatCurrency, formatDate, downloadCSV } from '../lib/utils';
 import { Page } from '../App';
 import { useData } from '../lib/DataContext';
+import ExportMenu from './ui/ExportMenu';
 
 const StatCard: React.FC<{ title: string; amount: string; change: string; isPositive: boolean }> = ({ title, amount, change, isPositive }) => (
     <div className="card h-100 p-4 animate-slide-up">
@@ -29,15 +30,22 @@ const Dashboard: React.FC<{ setActivePage: (p: Page) => void }> = ({ setActivePa
 
     const chartData = transactions.slice(0, 10).map(t => ({ name: formatDate(t.date), value: t.amount })).reverse();
 
+    const exportData = useMemo(() => [
+        { Metric: 'Gross Revenue', Value: revenue },
+        { Metric: 'Operating Expenses', Value: expense },
+        { Metric: 'Net Margin', Value: profit },
+        { Metric: 'Transaction Count', Value: transactions.length }
+    ], [revenue, expense, profit, transactions.length]);
+
     return (
         <div className="container-fluid py-2">
             <div className="d-flex flex-column flex-md-row justify-content-between align-items-md-center mb-5 gap-3">
-                <div>
+                <div className="d-print-block">
                     <h1 className="fw-800 tracking-tight text-black mb-1">Financial Overview</h1>
-                    <p className="text-muted mb-0">Your fleet's performance for the current fiscal period.</p>
+                    <p className="text-muted mb-0">Your fleet's performance for the current period.</p>
                 </div>
-                <div className="d-flex gap-2">
-                    <button className="btn btn-white border px-4 fw-bold shadow-sm d-flex align-items-center"><Download size={18} className="me-2"/> Export</button>
+                <div className="d-flex gap-2 d-print-none">
+                    <ExportMenu data={exportData} filename="dashboard_summary" />
                     <button onClick={() => setActivePage('Transactions')} className="btn btn-primary shadow-lg d-flex align-items-center"><Plus size={18} className="me-2"/> New Entry</button>
                 </div>
             </div>
@@ -56,10 +64,10 @@ const Dashboard: React.FC<{ setActivePage: (p: Page) => void }> = ({ setActivePa
 
             <div className="row g-4">
                 <div className="col-12 col-xl-8">
-                    <div className="card p-4 h-100">
+                    <div className="card p-4 h-100 overflow-hidden">
                         <div className="d-flex justify-content-between align-items-center mb-4">
                             <h5 className="fw-800 text-black mb-0">Cash Flow Trends</h5>
-                            <div className="btn-group border rounded-3 p-1">
+                            <div className="btn-group border rounded-3 p-1 d-print-none">
                                 <button className="btn btn-sm btn-dark rounded-2 px-3">1M</button>
                                 <button className="btn btn-sm btn-white border-0 px-3">3M</button>
                                 <button className="btn btn-sm btn-white border-0 px-3">1Y</button>
@@ -96,7 +104,7 @@ const Dashboard: React.FC<{ setActivePage: (p: Page) => void }> = ({ setActivePa
                                             {t.type === 'Income' ? <TrendingUp size={16} className="text-success" /> : <TrendingDown size={16} className="text-danger" />}
                                         </div>
                                         <div>
-                                            <p className="fw-700 text-black mb-0 small">{t.description}</p>
+                                            <p className="fw-700 text-black mb-0 small text-truncate" style={{maxWidth: '150px'}}>{t.description}</p>
                                             <p className="text-muted mb-0" style={{fontSize: '0.7rem'}}>{formatDate(t.date)}</p>
                                         </div>
                                     </div>
@@ -106,8 +114,8 @@ const Dashboard: React.FC<{ setActivePage: (p: Page) => void }> = ({ setActivePa
                                 </div>
                             ))}
                         </div>
-                        <button onClick={() => setActivePage('Transactions')} className="btn btn-white w-100 border mt-4 fw-bold d-flex align-items-center justify-content-center">
-                            View All Activity <ArrowRight size={16} className="ms-2" />
+                        <button onClick={() => setActivePage('Transactions')} className="btn btn-white w-100 border mt-4 fw-bold d-flex align-items-center justify-content-center d-print-none">
+                            View All <ArrowRight size={16} className="ms-2" />
                         </button>
                     </div>
                 </div>

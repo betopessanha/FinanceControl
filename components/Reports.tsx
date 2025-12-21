@@ -2,9 +2,10 @@
 import React, { useState, useMemo } from 'react';
 import Card, { CardHeader, CardTitle, CardContent } from './ui/Card';
 import { TransactionType, Category, Transaction } from '../types';
-import { formatCurrency, formatDate } from '../lib/utils';
-import { Download, Calendar, LayoutList, Table as TableIcon, ChevronRight, TrendingUp, TrendingDown, DollarSign } from 'lucide-react';
+import { formatCurrency, formatDate, downloadCSV } from '../lib/utils';
+import { Download, Calendar, LayoutList, Table as TableIcon, ChevronRight, TrendingUp, TrendingDown, DollarSign, Loader2 } from 'lucide-react';
 import { useData } from '../lib/DataContext';
+import ExportMenu from './ui/ExportMenu';
 
 type ViewMode = 'standard' | 'monthly';
 
@@ -48,6 +49,14 @@ const Reports: React.FC = () => {
 
     const netIncome = totalIncome - totalExpenses;
 
+    const exportData = useMemo(() => [
+        { Section: 'INCOME', Category: 'TOTAL REVENUE', Amount: totalIncome },
+        ...incomeCategories.map(cat => ({ Section: 'INCOME', Category: cat.name, Amount: calculateTotalForCategory(cat.id) })),
+        { Section: 'EXPENSE', Category: 'TOTAL OPERATING', Amount: totalExpenses },
+        ...expenseCategories.map(cat => ({ Section: 'EXPENSE', Category: cat.name, Amount: calculateTotalForCategory(cat.id) })),
+        { Section: 'SUMMARY', Category: 'NET PROFIT/LOSS', Amount: netIncome }
+    ], [totalIncome, incomeCategories, totalExpenses, expenseCategories, netIncome, yearTransactions]);
+
     // Monthly View Matrix Helper
     const getMonthlyData = (category: Category) => {
         const monthlyTotals = new Array(12).fill(0);
@@ -77,12 +86,12 @@ const Reports: React.FC = () => {
 
     return (
         <div className="container-fluid py-2 animate-slide-up">
-            {/* Sticky Header Section */}
-            <div className="sticky-report-header mb-4">
+            {/* Header Section */}
+            <div className="mb-4 d-print-none">
                 <div className="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3">
-                    <div>
+                    <div className="d-print-block">
                         <h1 className="fw-800 tracking-tight text-black mb-1">Profit & Loss</h1>
-                        <p className="text-muted mb-0 small">Monitor company income statement and monthly performance.</p>
+                        <p className="text-muted mb-0 small">Performance summary for {selectedYear}.</p>
                     </div>
                     <div className="d-flex gap-2 align-items-center">
                         <div className="input-group w-auto shadow-sm me-2">
@@ -98,22 +107,10 @@ const Reports: React.FC = () => {
                             </select>
                         </div>
                         <div className="btn-group p-1 bg-subtle rounded-3 shadow-sm border">
-                            <button 
-                                className={`btn btn-sm rounded-2 d-flex align-items-center gap-2 px-3 ${viewMode === 'standard' ? 'btn-black shadow' : 'btn-white border-0 text-muted'}`}
-                                onClick={() => setViewMode('standard')}
-                            >
-                                <LayoutList size={14} /> Summary
-                            </button>
-                            <button 
-                                className={`btn btn-sm rounded-2 d-flex align-items-center gap-2 px-3 ${viewMode === 'monthly' ? 'btn-black shadow' : 'btn-white border-0 text-muted'}`}
-                                onClick={() => setViewMode('monthly')}
-                            >
-                                <TableIcon size={14} /> Monthly
-                            </button>
+                            <button className={`btn btn-sm rounded-2 px-3 ${viewMode === 'standard' ? 'btn-black shadow' : 'btn-white border-0 text-muted'}`} onClick={() => setViewMode('standard')}><LayoutList size={14} /> Summary</button>
+                            <button className={`btn btn-sm rounded-2 px-3 ${viewMode === 'monthly' ? 'btn-black shadow' : 'btn-white border-0 text-muted'}`} onClick={() => setViewMode('monthly')}><TableIcon size={14} /> Monthly</button>
                         </div>
-                        <button className="btn btn-white border px-4 fw-bold shadow-sm d-flex align-items-center rounded-3">
-                            <Download size={18} className="me-2"/> Export
-                        </button>
+                        <ExportMenu data={exportData} filename={`PnL_${selectedYear}`} />
                     </div>
                 </div>
             </div>
@@ -122,49 +119,38 @@ const Reports: React.FC = () => {
                 <CardContent className="p-0">
                     {viewMode === 'standard' ? (
                         <div className="d-flex flex-column">
-                            {/* Standard View Sections */}
                             <div className="p-4 p-md-5">
-                                <h5 className="fw-800 text-black mb-4 d-flex align-items-center gap-2">
-                                    <TrendingUp className="text-success" size={20} />
-                                    Total Income
-                                </h5>
-                                <div className="d-flex flex-column gap-1">
-                                    {incomeCategories.map(cat => {
-                                        const amount = calculateTotalForCategory(cat.id);
-                                        if (amount === 0) return null;
-                                        return (
-                                            <div key={cat.id} className="d-flex justify-content-between align-items-center p-3 rounded-3 hover-bg-subtle transition-all">
-                                                <span className="text-muted fw-600">{cat.name}</span>
-                                                <span className="fw-800 text-black">{formatCurrency(amount)}</span>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
+                                <h5 className="fw-800 text-black mb-4 d-flex align-items-center gap-2"><TrendingUp className="text-success" size={20} /> Total Income</h5>
+                                {incomeCategories.map(cat => {
+                                    const amount = calculateTotalForCategory(cat.id);
+                                    if (amount === 0) return null;
+                                    return (
+                                        <div key={cat.id} className="d-flex justify-content-between align-items-center p-3 rounded-3 hover-bg-subtle">
+                                            <span className="text-muted fw-600">{cat.name}</span>
+                                            <span className="fw-800 text-black">{formatCurrency(amount)}</span>
+                                        </div>
+                                    );
+                                })}
                                 <div className="d-flex justify-content-between align-items-center mt-4 pt-4 border-top">
-                                    <span className="fw-800 text-black fs-5">Total Gross Income</span>
+                                    <span className="fw-800 text-black fs-5">Gross Income</span>
                                     <span className="fw-800 text-success fs-4">{formatCurrency(totalIncome)}</span>
                                 </div>
                             </div>
                             
                             <div className="p-4 p-md-5 bg-subtle">
-                                <h5 className="fw-800 text-black mb-4 d-flex align-items-center gap-2">
-                                    <TrendingDown className="text-danger" size={20} />
-                                    Total Expenses
-                                </h5>
-                                <div className="d-flex flex-column gap-1">
-                                    {expenseCategories.map(cat => {
-                                        const amount = calculateTotalForCategory(cat.id);
-                                        if (amount === 0) return null;
-                                        return (
-                                            <div key={cat.id} className="d-flex justify-content-between align-items-center p-3 rounded-3 hover-bg-white transition-all shadow-sm-hover">
-                                                <span className="text-muted fw-600">{cat.name}</span>
-                                                <span className="fw-800 text-black">{formatCurrency(amount)}</span>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
+                                <h5 className="fw-800 text-black mb-4 d-flex align-items-center gap-2"><TrendingDown className="text-danger" size={20} /> Total Expenses</h5>
+                                {expenseCategories.map(cat => {
+                                    const amount = calculateTotalForCategory(cat.id);
+                                    if (amount === 0) return null;
+                                    return (
+                                        <div key={cat.id} className="d-flex justify-content-between align-items-center p-3 rounded-3 hover-bg-white shadow-sm-hover">
+                                            <span className="text-muted fw-600">{cat.name}</span>
+                                            <span className="fw-800 text-black">{formatCurrency(amount)}</span>
+                                        </div>
+                                    );
+                                })}
                                 <div className="d-flex justify-content-between align-items-center mt-4 pt-4 border-top">
-                                    <span className="fw-800 text-black fs-5">Total Operating Expenses</span>
+                                    <span className="fw-800 text-black fs-5">Operating Expenses</span>
                                     <span className="fw-800 text-danger fs-4">{formatCurrency(totalExpenses)}</span>
                                 </div>
                             </div>
@@ -172,40 +158,26 @@ const Reports: React.FC = () => {
                             <div className={`p-4 p-md-5 ${netIncome >= 0 ? 'bg-success bg-opacity-10' : 'bg-danger bg-opacity-10'}`}>
                                 <div className="d-flex justify-content-between align-items-center">
                                     <div className="d-flex align-items-center gap-3">
-                                        <div className={`p-3 rounded-circle ${netIncome >= 0 ? 'bg-success' : 'bg-danger'} text-white shadow-lg`}>
-                                            <DollarSign size={24} />
-                                        </div>
-                                        <div>
-                                            <h4 className="fw-800 text-black mb-0">Net Performance</h4>
-                                            <p className="text-muted mb-0 small">Final balance after all expenses</p>
-                                        </div>
+                                        <div className={`p-3 rounded-circle ${netIncome >= 0 ? 'bg-success' : 'bg-danger'} text-white shadow-lg`}><DollarSign size={24} /></div>
+                                        <div><h4 className="fw-800 text-black mb-0">Net Performance</h4><p className="text-muted mb-0 small">Final balance after all expenses</p></div>
                                     </div>
                                     <span className={`fw-800 fs-2 ${netIncome >= 0 ? 'text-success' : 'text-danger'}`}>{formatCurrency(netIncome)}</span>
                                 </div>
                             </div>
                         </div>
                     ) : (
-                        <div className="table-responsive">
-                            <table className="table align-middle mb-0 table-sticky-header" style={{ minWidth: '1200px' }}>
-                                <thead className="bg-light">
+                        <div className="table-responsive border-0" style={{ maxHeight: 'calc(100vh - 250px)', overflow: 'auto' }}>
+                            <table className="table align-middle mb-0 table-sticky-header" style={{ minWidth: '1300px' }}>
+                                <thead>
                                     <tr>
-                                        <th className="ps-4 py-3 sticky-column bg-light border-bottom" style={{ width: '280px' }}>
-                                            <span className="text-muted small fw-800 text-uppercase">Financial Structure</span>
-                                        </th>
-                                        {months.map(m => (
-                                            <th key={m} className="text-center py-3 text-muted small fw-800 text-uppercase border-bottom">{m}</th>
-                                        ))}
-                                        <th className="text-end py-3 pe-4 text-black small fw-800 text-uppercase border-bottom">Annual Total</th>
+                                        <th className="ps-4 py-3 sticky-column border-bottom border-end">Structure</th>
+                                        {months.map(m => <th key={m} className="text-center py-3 text-muted small fw-800 text-uppercase border-bottom">{m}</th>)}
+                                        <th className="text-end py-3 pe-4 text-black small fw-800 text-uppercase border-bottom border-start">Annual</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {/* --- INCOME SECTION --- */}
                                     <tr className="bg-light border-bottom">
-                                        <td colSpan={14} className="ps-4 py-3 fw-800 text-success small sticky-column bg-light" style={{ letterSpacing: '0.05em' }}>
-                                            <div className="d-flex align-items-center gap-2">
-                                                <TrendingUp size={16} /> OPERATING REVENUE (INCOME)
-                                            </div>
-                                        </td>
+                                        <td colSpan={months.length + 2} className="ps-4 py-3 fw-800 text-success small sticky-column border-end">OPERATING REVENUE</td>
                                     </tr>
                                     {incomeCategories.map(cat => {
                                         const monthly = getMonthlyData(cat);
@@ -213,35 +185,20 @@ const Reports: React.FC = () => {
                                         if (total === 0) return null;
                                         return (
                                             <tr key={cat.id} className="border-bottom">
-                                                <td className="ps-5 py-3 fw-600 text-dark sticky-column bg-white">{cat.name}</td>
-                                                {monthly.map((val, idx) => (
-                                                    <td key={idx} className={`text-center small ${val > 0 ? 'text-dark fw-500' : 'text-muted opacity-25'}`}>
-                                                        {val > 0 ? formatCurrency(val).replace('.00', '') : '-'}
-                                                    </td>
-                                                ))}
-                                                <td className="text-end pe-4 fw-700 text-success">{formatCurrency(total)}</td>
+                                                <td className="ps-5 py-3 fw-600 text-dark sticky-column border-end">{cat.name}</td>
+                                                {monthly.map((val, idx) => <td key={idx} className="text-center small">{val > 0 ? formatCurrency(val).replace('.00', '') : '-'}</td>)}
+                                                <td className="text-end pe-4 fw-700 text-success border-start bg-light bg-opacity-50">{formatCurrency(total)}</td>
                                             </tr>
                                         );
                                     })}
-                                    {/* Total Income Highlighted */}
-                                    <tr className="bg-success-subtle border-bottom border-success border-opacity-25">
-                                        <td className="ps-4 py-3 fw-800 text-success sticky-column bg-success-subtle">Total Operating Revenue</td>
-                                        {incomeMonthlyTotals.map((val, idx) => (
-                                            <td key={idx} className="text-center fw-800 text-success small bg-success-subtle">{formatCurrency(val).replace('.00', '')}</td>
-                                        ))}
-                                        <td className="text-end pe-4 fw-900 text-success bg-success-subtle">{formatCurrency(totalIncome)}</td>
+                                    <tr className="bg-success-subtle border-bottom">
+                                        <td className="ps-4 py-3 fw-800 text-success sticky-column border-end">Total Revenue</td>
+                                        {incomeMonthlyTotals.map((val, idx) => <td key={idx} className="text-center fw-800 text-success small">{formatCurrency(val).replace('.00', '')}</td>)}
+                                        <td className="text-end pe-4 fw-900 text-success border-start">{formatCurrency(totalIncome)}</td>
                                     </tr>
-
-                                    {/* --- SPACER --- */}
-                                    <tr style={{ height: '32px' }}><td colSpan={14} className="bg-white border-0 sticky-column"></td></tr>
-
-                                    {/* --- EXPENSE SECTION --- */}
+                                    
                                     <tr className="bg-light border-bottom">
-                                        <td colSpan={14} className="ps-4 py-3 fw-800 text-danger small sticky-column bg-light" style={{ letterSpacing: '0.05em' }}>
-                                            <div className="d-flex align-items-center gap-2">
-                                                <TrendingDown size={16} /> OPERATING EXPENSES
-                                            </div>
-                                        </td>
+                                        <td colSpan={months.length + 2} className="ps-4 py-3 fw-800 text-danger small sticky-column border-end">OPERATING EXPENSES</td>
                                     </tr>
                                     {expenseCategories.map(cat => {
                                         const monthly = getMonthlyData(cat);
@@ -249,41 +206,23 @@ const Reports: React.FC = () => {
                                         if (total === 0) return null;
                                         return (
                                             <tr key={cat.id} className="border-bottom">
-                                                <td className="ps-5 py-3 fw-600 text-dark sticky-column bg-white">{cat.name}</td>
-                                                {monthly.map((val, idx) => (
-                                                    <td key={idx} className={`text-center small ${val > 0 ? 'text-dark fw-500' : 'text-muted opacity-25'}`}>
-                                                        {val > 0 ? formatCurrency(val).replace('.00', '') : '-'}
-                                                    </td>
-                                                ))}
-                                                <td className="text-end pe-4 fw-700 text-danger">{formatCurrency(total)}</td>
+                                                <td className="ps-5 py-3 fw-600 text-dark sticky-column border-end">{cat.name}</td>
+                                                {monthly.map((val, idx) => <td key={idx} className="text-center small">{val > 0 ? formatCurrency(val).replace('.00', '') : '-'}</td>)}
+                                                <td className="text-end pe-4 fw-700 text-danger border-start bg-light bg-opacity-50">{formatCurrency(total)}</td>
                                             </tr>
                                         );
                                     })}
-                                    {/* Total Expense Highlighted */}
-                                    <tr className="bg-danger-subtle border-bottom border-danger border-opacity-25">
-                                        <td className="ps-4 py-3 fw-800 text-danger sticky-column bg-danger-subtle">Total Operating Expenses</td>
-                                        {expenseMonthlyTotals.map((val, idx) => (
-                                            <td key={idx} className="text-center fw-800 text-danger small bg-danger-subtle">{formatCurrency(val).replace('.00', '')}</td>
-                                        ))}
-                                        <td className="text-end pe-4 fw-900 text-danger bg-danger-subtle">{formatCurrency(totalExpenses)}</td>
+                                    <tr className="bg-danger-subtle border-bottom">
+                                        <td className="ps-4 py-3 fw-800 text-danger sticky-column border-end">Total Expenses</td>
+                                        {expenseMonthlyTotals.map((val, idx) => <td key={idx} className="text-center fw-800 text-danger small">{formatCurrency(val).replace('.00', '')}</td>)}
+                                        <td className="text-end pe-4 fw-900 text-danger border-start">{formatCurrency(totalExpenses)}</td>
                                     </tr>
 
-                                    {/* --- SPACER --- */}
-                                    <tr style={{ height: '48px' }}><td colSpan={14} className="bg-white border-0 sticky-column"></td></tr>
-
-                                    {/* --- NET PERFORMANCE SECTION --- */}
-                                    <tr className="border-top border-dark border-3 bg-light">
-                                        <td className="ps-4 py-4 fw-900 text-black sticky-column bg-light" style={{ fontSize: '1.1rem' }}>
-                                            NET PROFIT / LOSS
-                                        </td>
-                                        {netMonthlyTotals.map((val, idx) => (
-                                            <td key={idx} className={`text-center fw-900 bg-light ${val >= 0 ? 'text-success' : 'text-danger'}`} style={{ fontSize: '1rem' }}>
-                                                {formatCurrency(val).replace('.00', '')}
-                                            </td>
-                                        ))}
-                                        <td className={`text-end pe-4 fw-900 bg-light ${netIncome >= 0 ? 'text-success' : 'text-danger'}`} style={{ fontSize: '1.25rem' }}>
-                                            {formatCurrency(netIncome)}
-                                        </td>
+                                    <tr style={{ height: '48px' }}><td colSpan={months.length + 2} className="bg-white border-0 sticky-column"></td></tr>
+                                    <tr className="bg-dark text-white">
+                                        <td className="ps-4 py-4 fw-900 sticky-column border-end">NET PROFIT / LOSS</td>
+                                        {netMonthlyTotals.map((val, idx) => <td key={idx} className={`text-center fw-900 ${val >= 0 ? 'text-success' : 'text-danger'}`}>{formatCurrency(val).replace('.00', '')}</td>)}
+                                        <td className={`text-end pe-4 fw-900 border-start ${netIncome >= 0 ? 'text-success' : 'text-danger'}`}>{formatCurrency(netIncome)}</td>
                                     </tr>
                                 </tbody>
                             </table>
