@@ -1,128 +1,19 @@
-
 import React, { useState } from 'react';
-import Card from './ui/Card';
-import { TransactionType, Truck, Transaction } from '../types';
-import { formatCurrency } from '../lib/utils';
-import { Wrench, Fuel, TrendingUp, TrendingDown, Edit2, Trash2, PlusCircle, Save } from 'lucide-react';
+import Card, { CardContent } from './ui/Card';
+import { Truck } from '../types';
 import { useData } from '../lib/DataContext';
+import { generateId } from '../lib/utils';
+import { PlusCircle, Search, Edit2, Trash2, Truck as TruckIcon, Save } from 'lucide-react';
 import Modal from './ui/Modal';
-import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
-interface TruckCardProps {
-    truck: Truck;
-    transactions: Transaction[];
-    onEdit: (truck: Truck) => void;
-    onDelete: (id: string) => void;
-}
-
-const TruckCard: React.FC<TruckCardProps> = ({ truck, transactions, onEdit, onDelete }) => {
-    // Filter transactions for this truck
-    const truckTransactions = transactions.filter(t => t.truck?.id === truck.id);
-    
-    const revenue = truckTransactions
-        .filter(t => t.type === TransactionType.INCOME)
-        .reduce((sum, t) => sum + t.amount, 0);
-        
-    const expenses = truckTransactions
-        .filter(t => t.type === TransactionType.EXPENSE)
-        .reduce((sum, t) => sum + t.amount, 0);
-
-    const fuelCost = truckTransactions
-        .filter(t => t.category?.name === 'Fuel')
-        .reduce((sum, t) => sum + t.amount, 0);
-    
-    const maintenanceCost = truckTransactions
-        .filter(t => t.category?.name === 'Repairs & Maintenance')
-        .reduce((sum, t) => sum + t.amount, 0);
-
-    const netProfit = revenue - expenses;
-    const isProfitable = netProfit >= 0;
-
-    return (
-        <div className="card h-100 border-0 shadow-sm overflow-hidden hover-shadow transition-all group-action">
-            {/* Top color strip */}
-            <div className={`w-100 ${isProfitable ? 'bg-success' : 'bg-danger'}`} style={{height: '6px'}}></div>
-            
-            <div className="card-body p-4 d-flex flex-column position-relative">
-                {/* Action Buttons (Top Right) */}
-                <div className="position-absolute top-0 end-0 p-3">
-                    <div className="btn-group shadow-sm">
-                        <button 
-                            onClick={() => onEdit(truck)} 
-                            className="btn btn-sm btn-light text-primary bg-white border"
-                            title="Edit Truck"
-                        >
-                            <Edit2 size={14} />
-                        </button>
-                        <button 
-                            onClick={() => onDelete(truck.id)} 
-                            className="btn btn-sm btn-light text-danger bg-white border"
-                            title="Delete Truck"
-                        >
-                            <Trash2 size={14} />
-                        </button>
-                    </div>
-                </div>
-
-                <div className="d-flex justify-content-between align-items-start mb-4">
-                    <div>
-                        <div className="d-flex align-items-center gap-2">
-                             <h4 className="fw-bold text-dark mb-0">{truck.unitNumber}</h4>
-                             <span className="badge bg-light text-secondary border">{truck.year}</span>
-                        </div>
-                        <p className="text-muted small mb-0">{truck.make} {truck.model}</p>
-                    </div>
-                </div>
-
-                <div className="flex-grow-1">
-                    <div className="row g-2 mb-3 pb-3 border-bottom">
-                         <div className="col-6">
-                            <small className="text-muted fw-bold text-uppercase" style={{fontSize: '0.7rem'}}>Revenue</small>
-                            <p className="fw-bold text-dark mb-0">{formatCurrency(revenue)}</p>
-                        </div>
-                        <div className="col-6">
-                            <small className="text-muted fw-bold text-uppercase" style={{fontSize: '0.7rem'}}>Expenses</small>
-                            <p className="fw-bold text-dark mb-0">{formatCurrency(expenses)}</p>
-                        </div>
-                    </div>
-                    
-                    <div className="d-flex flex-column gap-2">
-                        <div className="d-flex justify-content-between align-items-center small">
-                            <div className="d-flex align-items-center text-muted">
-                                <Fuel size={16} className="me-2 text-warning" />
-                                <span>Fuel</span>
-                            </div>
-                            <span className="fw-medium text-dark">{formatCurrency(fuelCost)}</span>
-                        </div>
-                        <div className="d-flex justify-content-between align-items-center small">
-                            <div className="d-flex align-items-center text-muted">
-                                <Wrench size={16} className="me-2 text-info" />
-                                <span>Maintenance</span>
-                            </div>
-                            <span className="fw-medium text-dark">{formatCurrency(maintenanceCost)}</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <div className={`p-3 text-center text-white ${isProfitable ? 'bg-success bg-gradient' : 'bg-danger bg-gradient'}`}>
-                <small className="text-white text-opacity-75 text-uppercase fw-bold" style={{fontSize: '0.7rem'}}>Net Profit</small>
-                <h4 className="fw-bold mb-0">{formatCurrency(netProfit)}</h4>
-            </div>
-        </div>
-    );
-};
-
-
+/**
+ * Trucks component for managing the fleet inventory.
+ */
 const Trucks: React.FC = () => {
-    // Consume Data
-    const { trucks, transactions, addLocalTruck, updateLocalTruck, deleteLocalTruck } = useData();
-
-    // Modal State
+    const { trucks, addLocalTruck, updateLocalTruck, deleteLocalTruck } = useData();
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingTruck, setEditingTruck] = useState<Truck | null>(null);
-
-    // Form State
+    const [searchTerm, setSearchTerm] = useState('');
     const [formData, setFormData] = useState<Omit<Truck, 'id'>>({
         unitNumber: '',
         make: '',
@@ -153,129 +44,106 @@ const Trucks: React.FC = () => {
 
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();
-
-        const truckId = editingTruck ? editingTruck.id : `truck-${Date.now()}`;
-        
+        const truckId = editingTruck ? editingTruck.id : generateId();
         const truckObj: Truck = {
             id: truckId,
             ...formData
         };
 
-        // Persist via Context Functions (Handles both local state and database)
-        const success = editingTruck 
-            ? await updateLocalTruck(truckObj) 
-            : await addLocalTruck(truckObj);
-
-        if (success) {
-            setIsModalOpen(false);
+        if (editingTruck) {
+            await updateLocalTruck(truckObj);
+        } else {
+            await addLocalTruck(truckObj);
         }
+        setIsModalOpen(false);
     };
 
-    const handleDelete = async (id: string) => {
-        if (window.confirm("Are you sure you want to delete this truck?")) {
-            await deleteLocalTruck(id);
-        }
-    };
+    const filteredTrucks = trucks.filter(t => 
+        t.unitNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        t.make.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        t.model.toLowerCase().includes(searchTerm.toLowerCase())
+    );
 
     return (
         <div className="mb-5">
-             <div className="d-flex flex-column flex-md-row align-items-md-end justify-content-between gap-3 mb-4">
+            <div className="d-flex flex-column flex-md-row align-items-md-end justify-content-between gap-3 mb-4">
                 <div>
-                  <h2 className="fw-bold text-dark mb-1">Fleet Management</h2>
-                  <p className="text-muted mb-0">Monitor profitability per unit.</p>
+                  <h2 className="fw-bold text-dark mb-1">Fleet / Trucks</h2>
+                  <p className="text-muted mb-0">Manage your active vehicle inventory.</p>
                 </div>
-                <button 
-                    onClick={() => handleOpenModal()} 
-                    className="btn btn-primary d-flex align-items-center shadow-sm"
-                >
-                    <PlusCircle size={18} className="me-2" />
-                    Add Truck
+                <button onClick={() => handleOpenModal()} className="btn btn-primary d-flex align-items-center">
+                    <PlusCircle size={18} className="me-2" /> Add Truck
                 </button>
             </div>
-            
-            <div className="row g-4">
-                {trucks.length > 0 ? (
-                    trucks.map(truck => (
-                        <div className="col-12 col-md-6 col-xl-4" key={truck.id}>
-                            <TruckCard 
-                                truck={truck} 
-                                transactions={transactions} 
-                                onEdit={handleOpenModal}
-                                onDelete={handleDelete}
-                            />
-                        </div>
-                    ))
-                ) : (
-                    <div className="col-12 text-center py-5">
-                        <div className="text-muted opacity-50 mb-3">
-                            <PlusCircle size={48} />
-                        </div>
-                        <p className="text-muted">No trucks in your fleet yet.</p>
-                        <button onClick={() => handleOpenModal()} className="btn btn-link">Add your first truck</button>
-                    </div>
-                )}
-            </div>
 
-            {/* Add/Edit Modal */}
-            <Modal
-                isOpen={isModalOpen}
-                onClose={() => setIsModalOpen(false)}
-                title={editingTruck ? "Edit Truck" : "Add New Truck"}
-            >
-                <form onSubmit={handleSave}>
+            <Card className="min-vh-50">
+                <CardContent>
+                    <div className="mb-4" style={{maxWidth: '400px'}}>
+                        <div className="position-relative">
+                            <span className="position-absolute top-50 start-0 translate-middle-y ps-3 text-muted">
+                                <Search size={16} />
+                            </span>
+                            <input 
+                                type="text" 
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                placeholder="Search unit number, make..." 
+                                className="form-control ps-5 bg-light border-0" 
+                            />
+                        </div>
+                    </div>
+
                     <div className="row g-3">
-                        <div className="col-md-8">
-                            <label className="form-label fw-bold small text-muted">Unit Number / ID</label>
-                            <input 
-                                type="text" 
-                                className="form-control" 
-                                placeholder="e.g. T-101"
-                                value={formData.unitNumber}
-                                onChange={e => setFormData({...formData, unitNumber: e.target.value})}
-                                required
-                            />
-                        </div>
-                        <div className="col-md-4">
-                            <label className="form-label fw-bold small text-muted">Year</label>
-                            <input 
-                                type="number" 
-                                className="form-control" 
-                                placeholder="2023"
-                                value={formData.year}
-                                onChange={e => setFormData({...formData, year: parseInt(e.target.value) || new Date().getFullYear()})}
-                                required
-                            />
-                        </div>
-                        <div className="col-md-6">
+                        {filteredTrucks.map(truck => (
+                            <div key={truck.id} className="col-12 col-md-6 col-lg-4">
+                                <div className="card h-100 border bg-white shadow-sm hover-shadow transition-all">
+                                    <div className="card-body p-4">
+                                        <div className="d-flex justify-content-between align-items-start mb-3">
+                                            <div className="bg-primary bg-opacity-10 text-primary p-3 rounded-circle">
+                                                <TruckIcon size={24} />
+                                            </div>
+                                            <div className="btn-group">
+                                                <button className="btn btn-link text-primary p-1" onClick={() => handleOpenModal(truck)}><Edit2 size={16} /></button>
+                                                <button className="btn btn-link text-danger p-1" onClick={() => deleteLocalTruck(truck.id)}><Trash2 size={16} /></button>
+                                            </div>
+                                        </div>
+                                        <h5 className="fw-bold text-dark mb-1">Unit {truck.unitNumber}</h5>
+                                        <p className="text-muted small mb-3">{truck.year} {truck.make} {truck.model}</p>
+                                        <div className="border-top pt-3">
+                                            <span className="badge bg-light text-muted border">Active Fleet</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </CardContent>
+            </Card>
+
+            <Modal title={editingTruck ? "Edit Truck" : "Add New Truck"} isOpen={isModalOpen} onClose={() => setIsModalOpen(false)}>
+                <form onSubmit={handleSave}>
+                    <div className="mb-3">
+                        <label className="form-label fw-bold small text-muted">Unit Number</label>
+                        <input type="text" className="form-control" value={formData.unitNumber} onChange={e => setFormData({...formData, unitNumber: e.target.value})} required />
+                    </div>
+                    <div className="row">
+                        <div className="col-6 mb-3">
                             <label className="form-label fw-bold small text-muted">Make</label>
-                            <input 
-                                type="text" 
-                                className="form-control" 
-                                placeholder="e.g. Freightliner"
-                                value={formData.make}
-                                onChange={e => setFormData({...formData, make: e.target.value})}
-                                required
-                            />
+                            <input type="text" className="form-control" value={formData.make} onChange={e => setFormData({...formData, make: e.target.value})} required />
                         </div>
-                        <div className="col-md-6">
+                        <div className="col-6 mb-3">
                             <label className="form-label fw-bold small text-muted">Model</label>
-                            <input 
-                                type="text" 
-                                className="form-control" 
-                                placeholder="e.g. Cascadia"
-                                value={formData.model}
-                                onChange={e => setFormData({...formData, model: e.target.value})}
-                                required
-                            />
+                            <input type="text" className="form-control" value={formData.model} onChange={e => setFormData({...formData, model: e.target.value})} required />
                         </div>
                     </div>
-                    <div className="d-flex justify-content-end gap-2 mt-4 pt-3 border-top">
-                        <button type="button" onClick={() => setIsModalOpen(false)} className="btn btn-light border">Cancel</button>
-                        <button type="submit" className="btn btn-primary d-flex align-items-center">
-                            <Save size={16} className="me-2" />
-                            {editingTruck ? 'Save Changes' : 'Create Truck'}
-                        </button>
+                    <div className="mb-4">
+                        <label className="form-label fw-bold small text-muted">Year</label>
+                        <input type="number" className="form-control" value={formData.year} onChange={e => setFormData({...formData, year: parseInt(e.target.value) || 0})} required />
                     </div>
+                    <button type="submit" className="btn btn-primary w-100 py-2 fw-bold">
+                        <Save size={18} className="me-2" />
+                        {editingTruck ? 'Save Changes' : 'Add Truck'}
+                    </button>
                 </form>
             </Modal>
         </div>

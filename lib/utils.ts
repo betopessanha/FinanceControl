@@ -29,17 +29,36 @@ export const getTaxFormForStructure = (structure: LegalStructure): string => {
 };
 
 /**
+ * Validates if a string is a valid UUID v4
+ */
+export const isValidUUID = (id: string): boolean => {
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    return uuidRegex.test(id);
+};
+
+/**
+ * Generates a valid UUID v4 for database compatibility
+ */
+export const generateId = (): string => {
+    if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+        return crypto.randomUUID();
+    }
+    // Fallback for older environments
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+        const r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+        return v.toString(16);
+    });
+};
+
+/**
  * Universal CSV Export Utility
  */
 export const downloadCSV = (data: any[], filename: string) => {
     if (data.length === 0) return;
     
-    // Extract headers from the first object
     const headers = Object.keys(data[0]);
-    
-    // Build CSV string
     const csvRows = [];
-    csvRows.push(headers.join(',')); // Add Header Row
+    csvRows.push(headers.join(',')); 
 
     for (const row of data) {
         const values = headers.map(header => {

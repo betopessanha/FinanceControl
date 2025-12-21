@@ -93,6 +93,112 @@ const Settings: React.FC = () => {
         if(window.confirm("Are you sure? This will disconnect your Cloud Database.")) clearConnectionSettings();
     }
 
+    const schemaSQL = `-- SUPABASE SQL SETUP
+-- Run this in your Supabase SQL Editor to enable the required tables and security.
+
+-- 1. Create Tables with UUID support and user ownership
+CREATE TABLE IF NOT EXISTS business_entities (
+    id UUID PRIMARY KEY,
+    user_id UUID REFERENCES auth.users(id) DEFAULT auth.uid(),
+    name TEXT NOT NULL,
+    structure TEXT,
+    tax_form TEXT,
+    ein TEXT,
+    email TEXT,
+    phone TEXT,
+    website TEXT,
+    address TEXT,
+    city TEXT,
+    state TEXT,
+    zip TEXT,
+    logo_url TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS bank_accounts (
+    id UUID PRIMARY KEY,
+    user_id UUID REFERENCES auth.users(id) DEFAULT auth.uid(),
+    business_entity_id UUID REFERENCES business_entities(id),
+    name TEXT NOT NULL,
+    type TEXT,
+    initial_balance DECIMAL(15,2) DEFAULT 0,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS trucks (
+    id UUID PRIMARY KEY,
+    user_id UUID REFERENCES auth.users(id) DEFAULT auth.uid(),
+    unit_number TEXT NOT NULL,
+    make TEXT,
+    model TEXT,
+    year INTEGER,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS categories (
+    id UUID PRIMARY KEY,
+    user_id UUID REFERENCES auth.users(id) DEFAULT auth.uid(),
+    name TEXT NOT NULL,
+    type TEXT,
+    is_tax_deductible BOOLEAN DEFAULT true,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS loads (
+    id UUID PRIMARY KEY,
+    user_id UUID REFERENCES auth.users(id) DEFAULT auth.uid(),
+    truck_id UUID REFERENCES trucks(id),
+    current_location TEXT,
+    pickup_location TEXT,
+    delivery_location TEXT,
+    miles_to_pickup DECIMAL(10,2) DEFAULT 0,
+    miles_to_delivery DECIMAL(10,2) DEFAULT 0,
+    pickup_date DATE,
+    delivery_date DATE,
+    payment_type TEXT,
+    rate DECIMAL(15,2) DEFAULT 0,
+    total_revenue DECIMAL(15,2) DEFAULT 0,
+    status TEXT DEFAULT 'Planned',
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS transactions (
+    id UUID PRIMARY KEY,
+    user_id UUID REFERENCES auth.users(id) DEFAULT auth.uid(),
+    account_id UUID REFERENCES bank_accounts(id),
+    category_id UUID REFERENCES categories(id),
+    truck_id UUID REFERENCES trucks(id),
+    to_account_id UUID REFERENCES bank_accounts(id),
+    date DATE NOT NULL,
+    description TEXT,
+    amount DECIMAL(15,2) NOT NULL,
+    type TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 2. ENABLE RLS (MANDATORY TO FIX 42501 ERROR)
+ALTER TABLE business_entities ENABLE ROW LEVEL SECURITY;
+ALTER TABLE bank_accounts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE trucks ENABLE ROW LEVEL SECURITY;
+ALTER TABLE categories ENABLE ROW LEVEL SECURITY;
+ALTER TABLE loads ENABLE ROW LEVEL SECURITY;
+ALTER TABLE transactions ENABLE ROW LEVEL SECURITY;
+
+-- 3. CREATE POLICIES (Allow authenticated users to manage their OWN data)
+-- Use this pattern for all tables:
+CREATE POLICY "Manage own loads" ON loads FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Manage own business_entities" ON business_entities FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Manage own bank_accounts" ON bank_accounts FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Manage own trucks" ON trucks FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Manage own categories" ON categories FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Manage own transactions" ON transactions FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);`;
+
+    const handleCopySQL = () => {
+        navigator.clipboard.writeText(schemaSQL);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+    };
+
     return (
         <div className="mb-5" style={{ maxWidth: '1000px' }}>
             <div className="d-flex flex-column flex-md-row align-items-md-end justify-content-between gap-3 mb-4">
@@ -255,6 +361,33 @@ const Settings: React.FC = () => {
                     </Card>
                 </div>
             </div>
+
+            {/* SQL Schema Modal */}
+            <Modal isOpen={showSchema} onClose={() => setShowSchema(false)} title="SQL Schema & RLS Setup" size="lg">
+                <div className="p-2">
+                    <div className="alert alert-warning small d-flex align-items-start mb-4">
+                        <AlertTriangle size={18} className="me-2 mt-1 flex-shrink-0" />
+                        <div>
+                            <strong>Action Required:</strong> To fix the "42501 - Row Level Security" error, you must copy the code below and run it in your <strong>Supabase SQL Editor</strong>. This will enable proper ownership tracking using <code>user_id</code>.
+                        </div>
+                    </div>
+                    <div className="position-relative bg-dark rounded-4 overflow-hidden">
+                        <pre className="p-4 text-light small overflow-auto" style={{ maxHeight: '400px' }}>
+                            <code>{schemaSQL}</code>
+                        </pre>
+                        <button 
+                            className="btn btn-sm btn-white position-absolute top-0 end-0 m-3 d-flex align-items-center gap-2 shadow"
+                            onClick={handleCopySQL}
+                        >
+                            {copied ? <Check size={14} className="text-success" /> : <Copy size={14} />}
+                            {copied ? 'Copied!' : 'Copy SQL'}
+                        </button>
+                    </div>
+                    <div className="mt-4 pt-3 border-top text-end">
+                        <button className="btn btn-black px-4 rounded-3" onClick={() => setShowSchema(false)}>Close Editor</button>
+                    </div>
+                </div>
+            </Modal>
         </div>
     );
 };

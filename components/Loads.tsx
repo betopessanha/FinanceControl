@@ -2,9 +2,9 @@
 import React, { useState, useMemo } from 'react';
 import Card, { CardContent, CardHeader, CardTitle } from './ui/Card';
 import { LoadRecord, PaymentType } from '../types';
-import { formatCurrency, formatDate } from '../lib/utils';
+import { formatCurrency, formatDate, generateId } from '../lib/utils';
 import { useData } from '../lib/DataContext';
-import { MapPin, Navigation, DollarSign, Save, Trash2, Edit2, ChevronRight, Calculator, FileText, Calendar, ArrowRight, Map as MapIcon, Info, ArrowDown } from 'lucide-react';
+import { MapPin, Navigation, DollarSign, Save, Trash2, Edit2, ChevronRight, Calculator, FileText, Calendar, ArrowRight, Map as MapIcon, Info, ArrowDown, Loader2, AlertTriangle } from 'lucide-react';
 import Modal from './ui/Modal';
 import ExportMenu from './ui/ExportMenu';
 
@@ -13,6 +13,8 @@ const Loads: React.FC = () => {
     const [viewMode, setViewMode] = useState<'register' | 'planner'>('register');
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingLoad, setEditingLoad] = useState<LoadRecord | null>(null);
+    const [isSaving, setIsSaving] = useState(false);
+    const [saveError, setSaveError] = useState<string | null>(null);
 
     // Planner/Form State
     const [formData, setFormData] = useState<Partial<LoadRecord>>({
@@ -39,9 +41,13 @@ const Loads: React.FC = () => {
     const effectiveRPM = totalMiles > 0 ? totalRevenue / totalMiles : 0;
 
     const handleOpenModal = (load?: LoadRecord) => {
+        setSaveError(null);
         if (load) {
             setEditingLoad(load);
-            setFormData(load);
+            setFormData({
+                ...load,
+                truckId: load.truckId || ''
+            });
         } else {
             setEditingLoad(null);
             setFormData({
@@ -60,38 +66,56 @@ const Loads: React.FC = () => {
         setIsModalOpen(true);
     };
 
-    const handleSave = (e: React.FormEvent) => {
+    const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();
-        const loadObj: LoadRecord = {
-            id: editingLoad ? editingLoad.id : `load-${Date.now()}`,
-            currentLocation: formData.currentLocation || '',
-            milesToPickup: Number(formData.milesToPickup) || 0,
-            pickupLocation: formData.pickupLocation || '',
-            pickupDate: formData.pickupDate,
-            milesToDelivery: Number(formData.milesToDelivery) || 0,
-            deliveryLocation: formData.deliveryLocation || '',
-            deliveryDate: formData.deliveryDate,
-            totalMiles,
-            paymentType: formData.paymentType || PaymentType.PER_MILE,
-            rate: Number(formData.rate) || 0,
-            totalRevenue,
-            truckId: formData.truckId,
-            status: editingLoad ? editingLoad.status : 'Planned'
-        };
+        setIsSaving(true);
+        setSaveError(null);
+        
+        try {
+            const loadObj: LoadRecord = {
+                id: editingLoad ? editingLoad.id : generateId(),
+                currentLocation: (formData.currentLocation || '').toUpperCase(),
+                milesToPickup: Number(formData.milesToPickup) || 0,
+                pickupLocation: (formData.pickupLocation || '').toUpperCase(),
+                pickupDate: formData.pickupDate || null,
+                milesToDelivery: Number(formData.milesToDelivery) || 0,
+                deliveryLocation: (formData.deliveryLocation || '').toUpperCase(),
+                deliveryDate: formData.deliveryDate || null,
+                totalMiles,
+                paymentType: formData.paymentType || PaymentType.PER_MILE,
+                rate: Number(formData.rate) || 0,
+                totalRevenue: Number(totalRevenue.toFixed(2)),
+                truckId: formData.truckId || undefined,
+                status: editingLoad ? editingLoad.status : 'Planned'
+            };
 
-        if (editingLoad) updateLocalLoad(loadObj);
-        else addLocalLoad(loadObj);
+            let result;
+            if (editingLoad) {
+                result = await updateLocalLoad(loadObj);
+            } else {
+                result = await addLocalLoad(loadObj);
+            }
 
-        setIsModalOpen(false);
-        setViewMode('register');
+            if (result === false) {
+                throw new Error("Cloud synchronization failed. This is usually caused by an invalid Supabase API Key, URL, or database schema mismatch (Ensure ID is UUID).");
+            }
+
+            setIsModalOpen(false);
+            setViewMode('register');
+        } catch (error: any) {
+            console.error("Failed to save load:", error);
+            setSaveError(error.message || "An unexpected error occurred while saving.");
+        } finally {
+            setIsSaving(false);
+        }
     };
 
     const exportData = useMemo(() => loadRecords.map(l => ({
         ID: l.id,
         'Pickup Date': l.pickupDate ? formatDate(l.pickupDate) : 'N/A',
-        'Pickup Location': l.pickupLocation,
+        'Pickup Location': l.pickupLocation.toUpperCase(),
         'Delivery Date': l.deliveryDate ? formatDate(l.deliveryDate) : 'N/A',
-        'Delivery Location': l.deliveryLocation,
+        'Delivery Location': l.deliveryLocation.toUpperCase(),
         'Total Miles': l.totalMiles,
         'Payment Type': l.paymentType,
         'Revenue': l.totalRevenue,
@@ -126,6 +150,12 @@ const Loads: React.FC = () => {
                             </CardHeader>
                             <CardContent className="p-4 p-md-5">
                                 <form onSubmit={handleSave}>
+                                    {saveError && (
+                                        <div className="alert alert-danger d-flex align-items-center gap-2 mb-4">
+                                            <AlertTriangle size={18} />
+                                            <span className="small">{saveError}</span>
+                                        </div>
+                                    )}
                                     <div className="d-flex flex-column gap-4">
                                         
                                         {/* STEP 1: ORIGIN */}
@@ -139,7 +169,15 @@ const Loads: React.FC = () => {
                                                     <label className="form-label fw-bold small text-muted">Current Location (City, ST)</label>
                                                     <div className="input-group">
                                                         <span className="input-group-text bg-white border-end-0"><MapPin size={16}/></span>
-                                                        <input type="text" className="form-control border-start-0" placeholder="Where is the truck now?" value={formData.currentLocation} onChange={e => setFormData({...formData, currentLocation: e.target.value})} required />
+                                                        <input 
+                                                            type="text" 
+                                                            className="form-control border-start-0 text-uppercase" 
+                                                            placeholder="WHERE IS THE TRUCK NOW?" 
+                                                            style={{ textTransform: 'uppercase' }}
+                                                            value={formData.currentLocation} 
+                                                            onChange={e => setFormData({...formData, currentLocation: e.target.value.toUpperCase()})} 
+                                                            required 
+                                                        />
                                                     </div>
                                                 </div>
                                             </div>
@@ -165,7 +203,15 @@ const Loads: React.FC = () => {
                                                 </div>
                                                 <div className="col-md-6">
                                                     <label className="form-label fw-bold small">Pickup Location (City, ST)</label>
-                                                    <input type="text" className="form-control bg-white" placeholder="Where is the load?" value={formData.pickupLocation} onChange={e => setFormData({...formData, pickupLocation: e.target.value})} required />
+                                                    <input 
+                                                        type="text" 
+                                                        className="form-control bg-white text-uppercase" 
+                                                        placeholder="WHERE IS THE LOAD?" 
+                                                        style={{ textTransform: 'uppercase' }}
+                                                        value={formData.pickupLocation} 
+                                                        onChange={e => setFormData({...formData, pickupLocation: e.target.value.toUpperCase()})} 
+                                                        required 
+                                                    />
                                                 </div>
                                                 <div className="col-md-12">
                                                     <label className="form-label fw-bold small">Pickup Date</label>
@@ -194,7 +240,15 @@ const Loads: React.FC = () => {
                                                 </div>
                                                 <div className="col-md-6">
                                                     <label className="form-label fw-bold small">Delivery Location (City, ST)</label>
-                                                    <input type="text" className="form-control bg-white" placeholder="Final destination" value={formData.deliveryLocation} onChange={e => setFormData({...formData, deliveryLocation: e.target.value})} required />
+                                                    <input 
+                                                        type="text" 
+                                                        className="form-control bg-white text-uppercase" 
+                                                        placeholder="FINAL DESTINATION" 
+                                                        style={{ textTransform: 'uppercase' }}
+                                                        value={formData.deliveryLocation} 
+                                                        onChange={e => setFormData({...formData, deliveryLocation: e.target.value.toUpperCase()})} 
+                                                        required 
+                                                    />
                                                 </div>
                                                 <div className="col-md-12">
                                                     <label className="form-label fw-bold small">Delivery Date</label>
@@ -230,7 +284,7 @@ const Loads: React.FC = () => {
                                                     <label className="form-label fw-bold small text-white text-opacity-50">Assign Truck Unit</label>
                                                     <select className="form-select bg-white bg-opacity-10 border-0 text-white" value={formData.truckId} onChange={e => setFormData({...formData, truckId: e.target.value})}>
                                                         <option className="text-dark" value="">Select Unit...</option>
-                                                        {trucks.map(t => <option key={t.id} className="text-dark" value={t.unitNumber}>{t.unitNumber} - {t.make}</option>)}
+                                                        {trucks.map(t => <option key={t.id} className="text-dark" value={t.id}>{t.unitNumber} - {t.make}</option>)}
                                                     </select>
                                                 </div>
                                             </div>
@@ -239,8 +293,9 @@ const Loads: React.FC = () => {
 
                                     <div className="mt-5 d-flex justify-content-end gap-3 border-top pt-4">
                                         <button type="button" className="btn btn-white border px-4 rounded-3 fw-bold" onClick={() => setViewMode('register')}>Discard Planner</button>
-                                        <button type="submit" className="btn btn-black px-5 shadow-lg d-flex align-items-center gap-2 rounded-3 fw-800">
-                                            <Save size={18} /> Register Load
+                                        <button type="submit" className="btn btn-black px-5 shadow-lg d-flex align-items-center gap-2 rounded-3 fw-800" disabled={isSaving}>
+                                            {isSaving ? <Loader2 size={18} className="animate-spin me-2" /> : <Save size={18} className="me-2" />}
+                                            Register Load
                                         </button>
                                     </div>
                                 </form>
@@ -309,21 +364,21 @@ const Loads: React.FC = () => {
                                             <div className="position-absolute translate-middle-x start-0 ms-n3 bg-white border border-dark border-2 rounded-circle shadow-sm" style={{width: 14, height: 14, left: '-2px'}}></div>
                                             <div className="bg-white p-2 rounded-3 shadow-sm border border-light">
                                                 <small className="text-muted fw-bold d-block ls-1 small mb-1" style={{fontSize: '0.6rem'}}>ORIGIN</small>
-                                                <p className="fw-800 mb-0 small text-dark">{formData.currentLocation || 'Starting point...'}</p>
+                                                <p className="fw-800 mb-0 small text-dark text-uppercase">{formData.currentLocation || 'STARTING POINT...'}</p>
                                             </div>
                                         </div>
                                         <div className="mb-5 position-relative">
                                             <div className="position-absolute translate-middle-x start-0 ms-n3 bg-primary border border-white border-2 rounded-circle shadow-sm" style={{width: 14, height: 14, left: '-2px'}}></div>
                                             <div className="bg-white p-2 rounded-3 shadow-sm border border-light">
                                                 <small className="text-primary fw-bold d-block ls-1 small mb-1" style={{fontSize: '0.6rem'}}>PICKUP (+{formData.milesToPickup} mi)</small>
-                                                <p className="fw-800 mb-0 small text-dark">{formData.pickupLocation || 'Pickup location...'}</p>
+                                                <p className="fw-800 mb-0 small text-dark text-uppercase">{formData.pickupLocation || 'PICKUP LOCATION...'}</p>
                                             </div>
                                         </div>
                                         <div className="position-relative">
                                             <div className="position-absolute translate-middle-x start-0 ms-n3 bg-success border border-white border-2 rounded-circle shadow-sm" style={{width: 14, height: 14, left: '-2px'}}></div>
                                             <div className="bg-white p-2 rounded-3 shadow-sm border border-light">
                                                 <small className="text-success fw-bold d-block ls-1 small mb-1" style={{fontSize: '0.6rem'}}>DELIVERY (+{formData.milesToDelivery} mi)</small>
-                                                <p className="fw-800 mb-0 small text-dark">{formData.deliveryLocation || 'Delivery location...'}</p>
+                                                <p className="fw-800 mb-0 small text-dark text-uppercase">{formData.deliveryLocation || 'DELIVERY LOCATION...'}</p>
                                             </div>
                                         </div>
                                     </div>
@@ -359,13 +414,13 @@ const Loads: React.FC = () => {
                                                                 <div className="bg-subtle p-2 rounded-3 text-primary"><Navigation size={18}/></div>
                                                                 <div>
                                                                     <div className="d-flex align-items-center gap-2 mb-1">
-                                                                        <span className="fw-800 text-black">{l.pickupLocation}</span>
+                                                                        <span className="fw-800 text-black text-uppercase">{l.pickupLocation}</span>
                                                                         <ArrowRight size={14} className="text-muted" />
-                                                                        <span className="fw-800 text-black">{l.deliveryLocation}</span>
+                                                                        <span className="fw-800 text-black text-uppercase">{l.deliveryLocation}</span>
                                                                     </div>
                                                                     <div className="d-flex gap-3 text-muted" style={{fontSize: '0.75rem'}}>
                                                                         <span><Calendar size={12} className="me-1"/> {l.pickupDate ? formatDate(l.pickupDate) : 'TBD'}</span>
-                                                                        <span className="text-truncate" style={{maxWidth: '120px'}}>Origin: {l.currentLocation}</span>
+                                                                        <span className="text-truncate text-uppercase" style={{maxWidth: '120px'}}>Origin: {l.currentLocation}</span>
                                                                     </div>
                                                                 </div>
                                                             </div>
@@ -390,7 +445,7 @@ const Loads: React.FC = () => {
                                                             <span className="fw-800 text-success fs-5">{formatCurrency(l.totalRevenue)}</span>
                                                         </td>
                                                         <td className="py-4 text-center">
-                                                            <span className="badge bg-light text-muted border px-3 py-2">{l.truckId || 'N/A'}</span>
+                                                            <span className="badge bg-light text-muted border px-3 py-2">{trucks.find(t => t.id === l.truckId)?.unitNumber || 'N/A'}</span>
                                                         </td>
                                                         <td className="pe-4 py-4 text-end">
                                                             <div className="btn-group shadow-sm bg-white rounded-3 border">
@@ -420,20 +475,46 @@ const Loads: React.FC = () => {
             )}
 
             {/* Edit Modal (Simplified Form) */}
-            <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Update Load Record" size="lg">
+            <Modal isOpen={isModalOpen} onClose={() => !isSaving && setIsModalOpen(false)} title="Update Load Record" size="lg">
                 <form onSubmit={handleSave}>
+                     {saveError && (
+                        <div className="alert alert-danger d-flex align-items-center gap-2 mb-4">
+                            <AlertTriangle size={18} />
+                            <span className="small">{saveError}</span>
+                        </div>
+                     )}
                      <div className="row g-3">
                         <div className="col-md-12">
                             <label className="form-label fw-bold small text-muted">Current Location</label>
-                            <input type="text" className="form-control bg-light border-0 rounded-3" value={formData.currentLocation} onChange={e => setFormData({...formData, currentLocation: e.target.value})} />
+                            <input 
+                                type="text" 
+                                className="form-control bg-light border-0 rounded-3 text-uppercase" 
+                                style={{ textTransform: 'uppercase' }}
+                                value={formData.currentLocation} 
+                                onChange={e => setFormData({...formData, currentLocation: e.target.value.toUpperCase()})} 
+                            />
                         </div>
                         <div className="col-md-6">
                             <label className="form-label fw-bold small text-muted">Pickup Location</label>
-                            <input type="text" className="form-control bg-light border-0 rounded-3" value={formData.pickupLocation} onChange={e => setFormData({...formData, pickupLocation: e.target.value})} required />
+                            <input 
+                                type="text" 
+                                className="form-control bg-light border-0 rounded-3 text-uppercase" 
+                                style={{ textTransform: 'uppercase' }}
+                                value={formData.pickupLocation} 
+                                onChange={e => setFormData({...formData, pickupLocation: e.target.value.toUpperCase()})} 
+                                required 
+                            />
                         </div>
                         <div className="col-md-6">
                             <label className="form-label fw-bold small text-muted">Delivery Location</label>
-                            <input type="text" className="form-control bg-light border-0 rounded-3" value={formData.deliveryLocation} onChange={e => setFormData({...formData, deliveryLocation: e.target.value})} required />
+                            <input 
+                                type="text" 
+                                className="form-control bg-light border-0 rounded-3 text-uppercase" 
+                                style={{ textTransform: 'uppercase' }}
+                                value={formData.deliveryLocation} 
+                                onChange={e => setFormData({...formData, deliveryLocation: e.target.value.toUpperCase()})} 
+                                required 
+                            />
                         </div>
                         <div className="col-md-6">
                             <label className="form-label fw-bold small text-muted">Deadhead Miles (Origin to Pickup)</label>
@@ -443,17 +524,34 @@ const Loads: React.FC = () => {
                             <label className="form-label fw-bold small text-muted">Loaded Miles (Pickup to Delivery)</label>
                             <input type="number" className="form-control bg-light border-0 rounded-3" value={formData.milesToDelivery} onChange={e => setFormData({...formData, milesToDelivery: Number(e.target.value)})} />
                         </div>
-                        <div className="col-md-12">
+                        <div className="col-md-6">
+                            <label className="form-label fw-bold small text-muted">Payment Type</label>
+                            <select className="form-select bg-light border-0 rounded-3" value={formData.paymentType} onChange={e => setFormData({...formData, paymentType: e.target.value as PaymentType})}>
+                                <option value={PaymentType.PER_MILE}>Per Mile</option>
+                                <option value={PaymentType.FLAT_LOAD}>Flat Load</option>
+                            </select>
+                        </div>
+                        <div className="col-md-6">
                             <label className="form-label fw-bold small text-muted">Rate / Revenue</label>
                             <div className="input-group">
                                 <span className="input-group-text bg-light border-0 rounded-start-3">$</span>
                                 <input type="number" step="0.01" className="form-control bg-light border-0 rounded-end-3" value={formData.rate} onChange={e => setFormData({...formData, rate: Number(e.target.value)})} />
                             </div>
                         </div>
+                        <div className="col-md-12">
+                            <label className="form-label fw-bold small text-muted">Assign Truck Unit</label>
+                            <select className="form-select bg-light border-0 rounded-3" value={formData.truckId} onChange={e => setFormData({...formData, truckId: e.target.value})}>
+                                <option value="">Select Unit...</option>
+                                {trucks.map(t => <option key={t.id} value={t.id}>{t.unitNumber} - {t.make}</option>)}
+                            </select>
+                        </div>
                      </div>
                      <div className="d-flex justify-content-end gap-2 mt-4 pt-3 border-top">
                         <button type="button" className="btn btn-light rounded-3 px-4" onClick={() => setIsModalOpen(false)}>Cancel</button>
-                        <button type="submit" className="btn btn-black rounded-3 px-4">Update Record</button>
+                        <button type="submit" className="btn btn-black rounded-3 px-4" disabled={isSaving}>
+                            {isSaving ? <Loader2 size={18} className="animate-spin me-2" /> : <Save size={18} className="me-2" />}
+                            Update Record
+                        </button>
                      </div>
                 </form>
             </Modal>

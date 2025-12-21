@@ -1,410 +1,257 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
 import Card, { CardContent } from './ui/Card';
 import { Transaction, TransactionType, Category, BankAccount } from '../types';
-import { formatCurrency, formatDate, downloadCSV } from '../lib/utils';
-import { PlusCircle, Search, Filter, MoreHorizontal, ArrowDownCircle, ArrowUpCircle, Paperclip, Upload, X, Edit2, Sparkles, Loader2, Calendar, Wallet, ArrowRightLeft, ArrowRight, FileSpreadsheet, Check, UploadCloud, AlertTriangle, Trash2, Save, FileClock, CheckCircle2, ArrowDown, ArrowUp, Info, Download, ChevronRight } from 'lucide-react';
+import { formatCurrency, formatDate, downloadCSV, generateId } from '../lib/utils';
+import { PlusCircle, Search, Edit2, Loader2, Calendar, Wallet, Trash2, Save } from 'lucide-react';
 import Modal from './ui/Modal';
-import { GoogleGenAI, Type } from "@google/genai";
 import { useData } from '../lib/DataContext';
 import ExportMenu from './ui/ExportMenu';
 
-// --- Sub-components ---
-
-interface TransactionFormModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  onSave: (data: Omit<Transaction, 'id'>, id?: string) => void;
-  onDelete?: (id: string) => void;
-  initialData: Transaction | null;
-}
-
-const TransactionFormModal: React.FC<TransactionFormModalProps> = ({ isOpen, onClose, onSave, onDelete, initialData }) => {
-    const { categories, accounts, trucks } = useData();
-    
-    // Form State
-    const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
-    const [description, setDescription] = useState('');
-    const [amount, setAmount] = useState('');
-    const [type, setType] = useState<TransactionType>(TransactionType.EXPENSE);
-    const [categoryId, setCategoryId] = useState('');
-    const [accountId, setAccountId] = useState('');
-    const [toAccountId, setToAccountId] = useState('');
-    const [truckId, setTruckId] = useState('');
-    const [receipts, setReceipts] = useState<string[]>([]);
-
-    // AI State
-    const [isAnalyzing, setIsAnalyzing] = useState(false);
-    const [aiSuggestion, setAiSuggestion] = useState<string | null>(null);
-
-    useEffect(() => {
-        if (initialData) {
-            setDate(new Date(initialData.date).toISOString().split('T')[0]);
-            setDescription(initialData.description);
-            setAmount(initialData.amount.toString());
-            setType(initialData.type);
-            setCategoryId(initialData.category?.id || '');
-            setAccountId(initialData.accountId);
-            setToAccountId(initialData.toAccountId || '');
-            setTruckId(initialData.truck?.id || '');
-            setReceipts(initialData.receipts || []);
-        } else {
-            // Defaults
-            setDate(new Date().toISOString().split('T')[0]);
-            setDescription('');
-            setAmount('');
-            setType(TransactionType.EXPENSE);
-            setCategoryId('');
-            setAccountId(accounts[0]?.id || '');
-            setToAccountId('');
-            setTruckId('');
-            setReceipts([]);
-        }
-        setAiSuggestion(null);
-    }, [initialData, isOpen, accounts]);
-
-    const handleSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
-        const numAmount = parseFloat(amount);
-        if (isNaN(numAmount) || numAmount <= 0) {
-            alert("Please enter a valid amount");
-            return;
-        }
-        
-        const category = categories.find(c => c.id === categoryId);
-        const truck = trucks.find(t => t.id === truckId);
-
-        const data: Omit<Transaction, 'id'> = {
-            date: new Date(date).toISOString(),
-            description,
-            amount: numAmount,
-            type,
-            accountId,
-            toAccountId: type === TransactionType.TRANSFER ? toAccountId : undefined,
-            category: type !== TransactionType.TRANSFER ? category : undefined,
-            truck: type !== TransactionType.TRANSFER ? truck : undefined,
-            receipts
-        };
-
-        onSave(data, initialData?.id);
-    };
-
-    const handleDelete = () => {
-        if (initialData && onDelete) {
-            if (window.confirm("Are you sure you want to delete this transaction?")) {
-                onDelete(initialData.id);
-            }
-        }
-    };
-
-    const handleAiCategorize = async () => {
-        if (!description.trim()) {
-            alert("Please enter a description first.");
-            return;
-        }
-        
-        setIsAnalyzing(true);
-        setAiSuggestion(null);
-
-        try {
-            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-            const availableCategories = categories.filter(c => c.type === type);
-            const categoryNames = availableCategories.map(c => c.name);
-
-            const prompt = `Assign description: "${description}" to one of: ${JSON.stringify(categoryNames)}. Return exact category name in JSON.`;
-
-            const response = await ai.models.generateContent({
-                model: 'gemini-3-flash-preview',
-                contents: prompt,
-                config: {
-                    responseMimeType: 'application/json',
-                    responseSchema: {
-                        type: Type.OBJECT,
-                        properties: {
-                            categoryName: { type: Type.STRING },
-                            reason: { type: Type.STRING }
-                        }
-                    }
-                }
-            });
-
-            const result = JSON.parse(response.text || '{}');
-            if (result.categoryName) {
-                const match = availableCategories.find(c => c.name.toLowerCase() === result.categoryName.toLowerCase());
-                if (match) {
-                    setCategoryId(match.id);
-                    setAiSuggestion(`AI Suggestion: ${match.name}`);
-                }
-            }
-        } catch (error) {
-            console.error("AI Error:", error);
-        } finally {
-            setIsAnalyzing(false);
-        }
-    };
-
-    const filteredCategories = categories.filter(c => c.type === type);
-
-    return (
-        <Modal 
-            isOpen={isOpen} 
-            onClose={onClose} 
-            title={initialData ? "Edit Transaction" : "New Transaction"}
-            size="lg"
-        >
-            <form onSubmit={handleSubmit}>
-                <div className="row g-3">
-                    <div className="col-12">
-                        <label className="form-label fw-bold small text-muted">Type</label>
-                        <div className="d-flex gap-2">
-                            {[TransactionType.EXPENSE, TransactionType.INCOME, TransactionType.TRANSFER].map(t => (
-                                <button key={t} type="button" onClick={() => setType(t)} className={`btn flex-fill ${type === t ? 'btn-dark' : 'btn-light border'}`}>{t}</button>
-                            ))}
-                        </div>
-                    </div>
-
-                    <div className="col-md-6">
-                        <label className="form-label fw-bold small text-muted">Date</label>
-                        <input type="date" className="form-control shadow-sm" value={date} onChange={e => setDate(e.target.value)} required />
-                    </div>
-
-                    <div className="col-md-6">
-                        <label className="form-label fw-bold small text-muted">Amount</label>
-                        <div className="input-group">
-                            <span className="input-group-text">$</span>
-                            <input type="number" className="form-control shadow-sm" value={amount} onChange={e => setAmount(e.target.value)} step="0.01" required />
-                        </div>
-                    </div>
-
-                    <div className="col-12">
-                        <label className="form-label fw-bold small text-muted">Description</label>
-                        <div className="input-group">
-                            <input type="text" className="form-control shadow-sm" value={description} onChange={e => setDescription(e.target.value)} required />
-                            {type !== TransactionType.TRANSFER && (
-                                <button type="button" className="btn btn-outline-primary" onClick={handleAiCategorize} disabled={isAnalyzing || !description}>
-                                    {isAnalyzing ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
-                                </button>
-                            )}
-                        </div>
-                        {aiSuggestion && <div className="form-text text-info small mt-1">{aiSuggestion}</div>}
-                    </div>
-
-                    {type === TransactionType.TRANSFER ? (
-                        <>
-                            <div className="col-md-6">
-                                <label className="form-label fw-bold small text-muted">From</label>
-                                <select className="form-select shadow-sm" value={accountId} onChange={e => setAccountId(e.target.value)} required>
-                                    <option value="">Select Account</option>
-                                    {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-                                </select>
-                            </div>
-                            <div className="col-md-6">
-                                <label className="form-label fw-bold small text-muted">To</label>
-                                <select className="form-select shadow-sm" value={toAccountId} onChange={e => setToAccountId(e.target.value)} required>
-                                    <option value="">Select Account</option>
-                                    {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-                                </select>
-                            </div>
-                        </>
-                    ) : (
-                        <>
-                            <div className="col-md-6">
-                                <label className="form-label fw-bold small text-muted">Category</label>
-                                <select className="form-select shadow-sm" value={categoryId} onChange={e => setCategoryId(e.target.value)} required>
-                                    <option value="">Select...</option>
-                                    {filteredCategories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                                </select>
-                            </div>
-                            <div className="col-md-6">
-                                <label className="form-label fw-bold small text-muted">Account</label>
-                                <select className="form-select shadow-sm" value={accountId} onChange={e => setAccountId(e.target.value)} required>
-                                    <option value="">Select...</option>
-                                    {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-                                </select>
-                            </div>
-                        </>
-                    )}
-                </div>
-
-                <div className="d-flex flex-column-reverse flex-md-row justify-content-between gap-2 mt-4 pt-3 border-top">
-                    {initialData && onDelete && <button type="button" onClick={handleDelete} className="btn btn-danger bg-opacity-10 text-danger border-0 py-2">Delete Transaction</button>}
-                    <div className="d-flex gap-2 ms-md-auto">
-                        <button type="button" onClick={onClose} className="btn btn-light border flex-fill flex-md-grow-0">Cancel</button>
-                        <button type="submit" className="btn btn-primary flex-fill flex-md-grow-0">Save Entry</button>
-                    </div>
-                </div>
-            </form>
-        </Modal>
-    );
-};
-
+/**
+ * Transactions Ledger component for listing and managing financial movements.
+ */
 const Transactions: React.FC = () => {
     const { 
-        transactions, accounts, loading, 
+        transactions, accounts, categories, loading, 
         reportFilter, setReportFilter,
         addLocalTransaction, updateLocalTransaction, deleteLocalTransaction
     } = useData();
     
     const [searchTerm, setSearchTerm] = useState('');
-    const [selectedYear, setSelectedYear] = useState<string>('All');
-    const [selectedAccount, setSelectedAccount] = useState<string>('All');
-    const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
-    const [filterCategories, setFilterCategories] = useState<string[] | null>(null);
-    const [selectedIds, setSelectedIds] = useState<string[]>([]);
     const [isFormModalOpen, setIsFormModalOpen] = useState(false);
     const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
 
+    const [formData, setFormData] = useState<Omit<Transaction, 'id'>>({
+        date: new Date().toISOString().split('T')[0],
+        description: '',
+        amount: 0,
+        type: TransactionType.EXPENSE,
+        accountId: '',
+        category: undefined,
+        toAccountId: undefined
+    });
+
+    // Handle incoming filters from other reports
     useEffect(() => {
-        if (reportFilter) {
-            setSelectedYear(reportFilter.year);
-            setFilterCategories(reportFilter.categoryNames);
-        } else {
-            setFilterCategories(null);
+        if (reportFilter && reportFilter.sourceReport) {
+            setSearchTerm(reportFilter.sourceReport);
         }
     }, [reportFilter]);
 
-    const handleSaveTransaction = async (transactionData: Omit<Transaction, 'id'>, id?: string) => {
-        const fullTransactionObj: Transaction = { id: id || `temp-${Date.now()}`, ...transactionData };
-        if (id) await updateLocalTransaction(fullTransactionObj);
+    const handleOpenModal = (transaction?: Transaction) => {
+        if (transaction) {
+            setEditingTransaction(transaction);
+            setFormData({
+                date: transaction.date.split('T')[0],
+                description: transaction.description,
+                amount: transaction.amount,
+                type: transaction.type,
+                accountId: transaction.accountId,
+                category: transaction.category,
+                toAccountId: transaction.toAccountId
+            });
+        } else {
+            setEditingTransaction(null);
+            setFormData({
+                date: new Date().toISOString().split('T')[0],
+                description: '',
+                amount: 0,
+                type: TransactionType.EXPENSE,
+                accountId: accounts.length > 0 ? accounts[0].id : '',
+                category: undefined,
+                toAccountId: undefined
+            });
+        }
+        setIsFormModalOpen(true);
+    };
+
+    const handleSaveTransaction = async (e: React.FormEvent) => {
+        e.preventDefault();
+        const fullTransactionObj: Transaction = { 
+            id: editingTransaction ? editingTransaction.id : generateId(), 
+            ...formData 
+        };
+        
+        if (editingTransaction) await updateLocalTransaction(fullTransactionObj);
         else await addLocalTransaction(fullTransactionObj);
+        
         setIsFormModalOpen(false);
         setEditingTransaction(null);
     };
 
-    const handleTransactionDelete = async (id: string) => {
-        await deleteLocalTransaction(id);
-        setIsFormModalOpen(false);
-        setEditingTransaction(null);
-    };
+    const filteredTransactions = useMemo(() => {
+        return transactions.filter(t => 
+            t.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            t.category?.name.toLowerCase().includes(searchTerm.toLowerCase())
+        );
+    }, [transactions, searchTerm]);
 
-    const filteredTransactions = transactions
-        .filter(t => {
-            const matchesSearch = t.description.toLowerCase().includes(searchTerm.toLowerCase());
-            const matchesYear = selectedYear === 'All' || new Date(t.date).getFullYear().toString() === selectedYear;
-            const matchesAccount = selectedAccount === 'All' || t.accountId === selectedAccount || t.toAccountId === selectedAccount;
-            let matchesReportCategory = true;
-            if (filterCategories) {
-                matchesReportCategory = filterCategories.includes(t.category?.name || 'Uncategorized');
-            }
-            return matchesSearch && matchesYear && matchesAccount && matchesReportCategory;
-        })
-        .sort((a, b) => {
-            const dA = new Date(a.date).valueOf();
-            const dB = new Date(b.date).valueOf();
-            return sortOrder === 'desc' ? dB - dA : dA - dB;
-        });
-
-    const exportData = useMemo(() => filteredTransactions.map(t => ({
-        Date: t.date.split('T')[0],
-        Description: t.description,
-        Category: t.category?.name || 'Transfer',
-        Type: t.type,
-        Account: accounts.find(a => a.id === t.accountId)?.name || 'Unknown',
-        Amount: t.amount,
-        Truck: t.truck?.unitNumber || ''
-    })), [filteredTransactions, accounts]);
-
-    const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (e.target.checked) setSelectedIds(filteredTransactions.map(t => t.id));
-        else setSelectedIds([]);
-    };
-
-    const handleSelectRow = (id: string) => {
-        if (selectedIds.includes(id)) setSelectedIds(selectedIds.filter(i => i !== id));
-        else setSelectedIds([...selectedIds, id]);
-    };
-
-    if (loading) return <div className="text-center py-5"><Loader2 className="animate-spin text-primary" size={32}/></div>;
-
-    const isAllSelected = filteredTransactions.length > 0 && selectedIds.length === filteredTransactions.length;
-    const isIndeterminate = selectedIds.length > 0 && selectedIds.length < filteredTransactions.length;
+    if (loading) {
+        return <div className="text-center py-5"><Loader2 size={40} className="animate-spin text-primary" /></div>;
+    }
 
     return (
-        <div className="mb-5 animate-slide-up">
-             <div className="d-flex flex-column flex-md-row align-items-md-end justify-content-between gap-3 mb-4">
+        <div className="container-fluid py-2 animate-slide-up">
+            <div className="d-flex flex-column flex-md-row justify-content-between align-items-md-center mb-4 gap-3">
                 <div>
-                  <h2 className="fw-800 text-dark mb-1">Ledger & Ledger</h2>
-                  <p className="text-muted mb-0">Manage all fleet financial recordings.</p>
+                    <h1 className="fw-800 tracking-tight text-black mb-1">Transaction Ledger</h1>
+                    <p className="text-muted mb-0 small">Record and manage your fleet's financial movements.</p>
+                </div>
+                <div className="d-flex gap-2">
+                    <ExportMenu data={filteredTransactions} filename="transactions" />
+                    <button onClick={() => handleOpenModal()} className="btn btn-primary d-flex align-items-center shadow-sm">
+                        <PlusCircle size={18} className="me-2" /> Add Transaction
+                    </button>
                 </div>
             </div>
-            
-            <Card>
-                <CardContent className="p-3 p-md-4">
-                    <div className="d-flex flex-column flex-lg-row justify-content-between align-items-stretch align-items-lg-center mb-4 gap-3">
-                        <div className="flex-grow-1" style={{ maxWidth: '350px' }}>
-                            <div className="position-relative d-print-none">
-                                <Search size={18} className="position-absolute top-50 start-0 translate-middle-y ms-3 text-muted" />
-                                <input type="text" placeholder="Search description..." className="form-control ps-5 rounded-pill bg-light border-0 shadow-sm" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+
+            <Card className="border-0 shadow-sm overflow-hidden">
+                <CardContent className="p-0">
+                    <div className="p-4 bg-white border-bottom">
+                        <div className="row g-3">
+                            <div className="col-12 col-md-4">
+                                <div className="position-relative">
+                                    <Search size={16} className="position-absolute top-50 start-0 translate-middle-y ms-3 text-muted" />
+                                    <input 
+                                        type="text" 
+                                        className="form-control border-0 bg-subtle ps-5 rounded-pill" 
+                                        placeholder="Search description, category..."
+                                        value={searchTerm}
+                                        onChange={e => setSearchTerm(e.target.value)}
+                                    />
+                                </div>
                             </div>
-                        </div>
-                        
-                        <div className="d-flex flex-wrap gap-2 justify-content-end align-items-center d-print-none">
-                             <ExportMenu data={exportData} filename="transactions" />
-                             <button onClick={() => setIsFormModalOpen(true)} className="btn btn-black d-flex align-items-center shadow-lg rounded-pill px-4">
-                                <PlusCircle size={18} className="me-2" />Add Entry
-                             </button>
                         </div>
                     </div>
 
-                    {/* Desktop View */}
-                    <div className="desktop-table-view table-responsive">
-                        <table className="table table-hover align-middle">
-                            <thead className="table-light">
+                    <div className="table-responsive">
+                        <table className="table align-middle mb-0 table-hover">
+                            <thead className="bg-light">
                                 <tr>
-                                    <th className="ps-3 d-print-none" style={{width: '40px'}}><input type="checkbox" className="form-check-input" checked={isAllSelected} ref={input => { if (input) input.indeterminate = isIndeterminate; }} onChange={handleSelectAll} /></th>
-                                    <th className="text-secondary small text-uppercase py-3 cursor-pointer" onClick={() => setSortOrder(prev => prev === 'desc' ? 'asc' : 'desc')}>Date</th>
-                                    <th className="text-secondary small text-uppercase py-3">Description</th>
-                                    <th className="text-secondary small text-uppercase py-3">Category</th>
-                                    <th className="text-secondary small text-uppercase py-3 text-end">Amount</th>
-                                    <th className="text-secondary small text-uppercase py-3 text-center d-print-none">Action</th>
+                                    <th className="ps-4 py-3 fw-800 text-muted small text-uppercase border-0">Date</th>
+                                    <th className="py-3 fw-800 text-muted small text-uppercase border-0">Description</th>
+                                    <th className="py-3 fw-800 text-muted small text-uppercase border-0">Category</th>
+                                    <th className="py-3 fw-800 text-muted small text-uppercase border-0">Account</th>
+                                    <th className="py-3 fw-800 text-muted small text-uppercase border-0 text-end">Amount</th>
+                                    <th className="pe-4 py-3 fw-800 text-muted small text-uppercase border-0 text-center">Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {filteredTransactions.map(t => (
-                                    <tr key={t.id}>
-                                        <td className="ps-3 d-print-none"><input type="checkbox" className="form-check-input" checked={selectedIds.includes(t.id)} onChange={() => handleSelectRow(t.id)} /></td>
-                                        <td className="text-muted small">{formatDate(t.date)}</td>
-                                        <td className="fw-bold text-dark">{t.description}</td>
-                                        <td><span className={`badge rounded-pill ${t.type === 'Income' ? 'bg-success bg-opacity-10 text-success' : 'bg-danger bg-opacity-10 text-danger'}`}>{t.category?.name || 'Transfer'}</span></td>
-                                        <td className={`text-end fw-800 ${t.type === 'Income' ? 'text-success' : 'text-danger'}`}>{formatCurrency(t.amount)}</td>
-                                        <td className="text-center d-print-none">
-                                            <button onClick={() => { setEditingTransaction(t); setIsFormModalOpen(true); }} className="btn btn-light btn-sm border rounded-pill"><Edit2 size={16} /></button>
+                                    <tr key={t.id} className="border-bottom border-light">
+                                        <td className="ps-4 py-3">
+                                            <div className="d-flex align-items-center gap-2">
+                                                <Calendar size={14} className="text-muted" />
+                                                <span className="small fw-600">{formatDate(t.date)}</span>
+                                            </div>
+                                        </td>
+                                        <td className="py-3">
+                                            <span className="fw-700 text-dark small">{t.description}</span>
+                                        </td>
+                                        <td className="py-3">
+                                            <span className={`badge rounded-pill px-3 py-1 fw-bold ${t.type === TransactionType.INCOME ? 'bg-success bg-opacity-10 text-success' : 'bg-danger bg-opacity-10 text-danger'}`} style={{fontSize: '0.65rem'}}>
+                                                {t.category?.name || 'Uncategorized'}
+                                            </span>
+                                        </td>
+                                        <td className="py-3">
+                                            <div className="d-flex align-items-center gap-2">
+                                                <Wallet size={14} className="text-muted" />
+                                                <span className="small text-muted">{accounts.find(a => a.id === t.accountId)?.name || 'Unknown'}</span>
+                                            </div>
+                                        </td>
+                                        <td className="py-3 text-end">
+                                            <span className={`fw-800 ${t.type === TransactionType.INCOME ? 'text-success' : 'text-danger'}`}>
+                                                {t.type === TransactionType.INCOME ? '+' : '-'} {formatCurrency(t.amount)}
+                                            </span>
+                                        </td>
+                                        <td className="pe-4 py-3 text-center">
+                                            <div className="d-flex justify-content-center gap-2">
+                                                <button onClick={() => handleOpenModal(t)} className="btn btn-sm btn-white border-0"><Edit2 size={16} className="text-muted" /></button>
+                                                <button onClick={() => deleteLocalTransaction(t.id)} className="btn btn-sm btn-white border-0"><Trash2 size={16} className="text-danger" /></button>
+                                            </div>
                                         </td>
                                     </tr>
                                 ))}
                             </tbody>
                         </table>
                     </div>
-
-                    {/* Mobile Card List */}
-                    <div className="mobile-card-list">
-                        {filteredTransactions.map(t => (
-                            <div key={t.id} className="card border-0 bg-subtle p-3 shadow-sm" onClick={() => { setEditingTransaction(t); setIsFormModalOpen(true); }}>
-                                <div className="d-flex justify-content-between align-items-start mb-2">
-                                    <div className="d-flex align-items-center gap-2">
-                                        <div className={`p-2 rounded-circle ${t.type === 'Income' ? 'bg-success bg-opacity-10 text-success' : 'bg-danger bg-opacity-10 text-danger'}`}>
-                                            {t.type === 'Income' ? <ArrowUp size={14} /> : <ArrowDown size={14} />}
-                                        </div>
-                                        <div>
-                                            <h6 className="mb-0 fw-800 text-dark">{t.description}</h6>
-                                            <small className="text-muted">{formatDate(t.date)}</small>
-                                        </div>
-                                    </div>
-                                    <div className={`fw-800 ${t.type === 'Income' ? 'text-success' : 'text-danger'}`}>
-                                        {t.type === 'Income' ? '+' : '-'}{formatCurrency(t.amount)}
-                                    </div>
-                                </div>
-                                <div className="d-flex justify-content-between align-items-center mt-2 pt-2 border-top border-dark border-opacity-10">
-                                    <span className="badge bg-white text-muted border small px-3 rounded-pill">{t.category?.name || 'Transfer'}</span>
-                                    <ChevronRight size={16} className="text-muted" />
-                                </div>
-                            </div>
-                        ))}
-                    </div>
                 </CardContent>
             </Card>
 
-            <TransactionFormModal isOpen={isFormModalOpen} onClose={() => setIsFormModalOpen(false)} onSave={handleSaveTransaction} onDelete={handleTransactionDelete} initialData={editingTransaction} />
+            <Modal isOpen={isFormModalOpen} onClose={() => setIsFormModalOpen(false)} title={editingTransaction ? "Edit Transaction" : "New Transaction"}>
+                <form onSubmit={handleSaveTransaction}>
+                    <div className="mb-3">
+                        <label className="form-label fw-bold small text-muted">Transaction Type</label>
+                        <div className="d-flex gap-2 p-1 bg-light rounded">
+                            <button type="button" onClick={() => setFormData({...formData, type: TransactionType.EXPENSE})} className={`btn flex-fill ${formData.type === TransactionType.EXPENSE ? 'btn-white shadow-sm text-danger fw-bold' : 'text-muted'}`}>Expense</button>
+                            <button type="button" onClick={() => setFormData({...formData, type: TransactionType.INCOME})} className={`btn flex-fill ${formData.type === TransactionType.INCOME ? 'btn-white shadow-sm text-success fw-bold' : 'text-muted'}`}>Income</button>
+                            <button type="button" onClick={() => setFormData({...formData, type: TransactionType.TRANSFER})} className={`btn flex-fill ${formData.type === TransactionType.TRANSFER ? 'btn-white shadow-sm text-primary fw-bold' : 'text-muted'}`}>Transfer</button>
+                        </div>
+                    </div>
+
+                    <div className="mb-3">
+                        <label className="form-label fw-bold small text-muted">Date</label>
+                        <input type="date" className="form-control" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} required />
+                    </div>
+
+                    <div className="mb-3">
+                        <label className="form-label fw-bold small text-muted">Description</label>
+                        <input type="text" className="form-control" value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} required />
+                    </div>
+
+                    <div className="row g-3 mb-3">
+                        <div className="col-md-6">
+                            <label className="form-label fw-bold small text-muted">Amount</label>
+                            <div className="input-group">
+                                <span className="input-group-text bg-light">$</span>
+                                <input type="number" step="0.01" className="form-control" value={formData.amount} onChange={e => setFormData({...formData, amount: parseFloat(e.target.value) || 0})} required />
+                            </div>
+                        </div>
+                        <div className="col-md-6">
+                            <label className="form-label fw-bold small text-muted">Account</label>
+                            <select className="form-select" value={formData.accountId} onChange={e => setFormData({...formData, accountId: e.target.value})} required>
+                                <option value="">Select Account...</option>
+                                {accounts.map(acc => <option key={acc.id} value={acc.id}>{acc.name}</option>)}
+                            </select>
+                        </div>
+                    </div>
+
+                    {formData.type !== TransactionType.TRANSFER && (
+                        <div className="mb-4">
+                            <label className="form-label fw-bold small text-muted">Category</label>
+                            <select 
+                                className="form-select" 
+                                value={formData.category?.id || ''} 
+                                onChange={e => {
+                                    const cat = categories.find(c => c.id === e.target.value);
+                                    setFormData({...formData, category: cat});
+                                }}
+                            >
+                                <option value="">Select Category...</option>
+                                {categories.filter(c => c.type === formData.type).map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
+                            </select>
+                        </div>
+                    )}
+
+                    {formData.type === TransactionType.TRANSFER && (
+                        <div className="mb-4">
+                            <label className="form-label fw-bold small text-muted">To Account</label>
+                            <select className="form-select" value={formData.toAccountId || ''} onChange={e => setFormData({...formData, toAccountId: e.target.value})} required>
+                                <option value="">Select Target Account...</option>
+                                {accounts.filter(acc => acc.id !== formData.accountId).map(acc => <option key={acc.id} value={acc.id}>{acc.name}</option>)}
+                            </select>
+                        </div>
+                    )}
+
+                    <div className="d-flex justify-content-end gap-2 pt-3 border-top">
+                        <button type="button" onClick={() => setIsFormModalOpen(false)} className="btn btn-light border">Cancel</button>
+                        <button type="submit" className="btn btn-primary d-flex align-items-center gap-2">
+                            <Save size={18} />
+                            {editingTransaction ? 'Save Changes' : 'Record Transaction'}
+                        </button>
+                    </div>
+                </form>
+            </Modal>
         </div>
     );
 };
