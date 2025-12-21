@@ -89,7 +89,6 @@
         box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.05), 0 10px 10px -5px rgba(0, 0, 0, 0.02);
       }
 
-      /* Global Button Overrides */
       .btn {
         font-weight: 700;
         border-radius: 12px;
@@ -115,22 +114,10 @@
         border: none !important;
       }
 
-      .btn-black:hover {
-        background-color: #222222 !important;
-        color: #ffffff !important;
-        transform: translateY(-1px);
-      }
-
       .btn-white {
         background-color: #ffffff !important;
         color: #000000 !important;
         border: 1px solid var(--border-glass) !important;
-      }
-
-      .btn-white:hover {
-        background-color: #f8f9fa !important;
-        color: #000000 !important;
-        border-color: rgba(0,0,0,0.1) !important;
       }
 
       .glass-header {
@@ -154,51 +141,54 @@
         to { opacity: 1; transform: translateY(0) scale(1); }
       }
 
-      .form-check-input:checked {
-        background-color: var(--brand-primary);
-        border-color: var(--brand-primary);
-      }
-
       /* Sticky Header Fixes */
       .sticky-report-header {
         position: sticky;
-        top: -24px; /* Offset for internal padding */
-        z-index: 100;
-        background: rgba(248, 249, 250, 0.9);
+        top: -1.5rem;
+        z-index: 1000;
+        background: rgba(248, 249, 250, 0.95);
         backdrop-filter: blur(10px);
-        padding-top: 24px;
-        padding-bottom: 16px;
-        margin-top: -24px;
+        padding-top: 1.5rem;
+        padding-bottom: 1rem;
+        margin-top: -1.5rem;
+        border-bottom: 1px solid var(--border-glass);
       }
 
-      .table-sticky-header th {
+      .table-sticky-header thead th {
         position: sticky;
-        top: 0;
+        top: 80px; /* Offset for internal scroll with filter bar */
         background-color: #f8f9fa !important;
-        z-index: 10;
+        z-index: 900;
         box-shadow: inset 0 -1px 0 var(--border-glass);
       }
 
-      .table-sticky-header th.sticky-column {
+      .table-sticky-header thead th.sticky-column {
+        z-index: 950;
         left: 0;
-        z-index: 30; /* Above regular sticky headers */
       }
 
       .sticky-column {
         position: sticky;
         left: 0;
         z-index: 5;
-        background-color: white !important;
+        background-color: white;
         box-shadow: inset -1px 0 0 var(--border-glass);
+      }
+
+      tr.bg-light .sticky-column,
+      tr.bg-subtle .sticky-column,
+      tr.bg-success-subtle .sticky-column,
+      tr.bg-danger-subtle .sticky-column {
+        background-color: inherit;
       }
 
       ::-webkit-scrollbar { width: 5px; height: 5px; }
       ::-webkit-scrollbar-track { background: transparent; }
       ::-webkit-scrollbar-thumb { background: #e5e7eb; border-radius: 10px; }
-      ::-webkit-scrollbar-thumb:hover { background: #d1d5db; }
 
       @media (max-width: 768px) {
         .sidebar { width: 100%; }
+        .table-sticky-header thead th { top: 130px; }
       }
     </style>
   </head>
