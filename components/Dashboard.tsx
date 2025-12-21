@@ -6,6 +6,7 @@ import { formatCurrency, formatDate, downloadCSV } from '../lib/utils';
 import { Page } from '../App';
 import { useData } from '../lib/DataContext';
 import ExportMenu from './ui/ExportMenu';
+import { TransactionType } from '../types';
 
 const StatCard: React.FC<{ title: string; amount: string; change: string; isPositive: boolean }> = ({ title, amount, change, isPositive }) => (
     <div className="card h-100 p-4 animate-slide-up">
@@ -27,29 +28,39 @@ const Dashboard: React.FC<{ setActivePage: (p: Page) => void }> = ({ setActivePa
     const { transactions } = useData();
     const [chartPeriod, setChartPeriod] = useState<Period>('1M');
 
-    const revenue = transactions.filter(t => t.type === 'Income').reduce((s, t) => s + t.amount, 0);
-    const expense = transactions.filter(t => t.type === 'Expense').reduce((s, t) => s + t.amount, 0);
+    // Somatória garantindo conversão numérica estrita
+    const revenue = useMemo(() => 
+        transactions
+            .filter(t => t.type === TransactionType.INCOME)
+            .reduce((sum, t) => sum + (Number(t.amount) || 0), 0)
+    , [transactions]);
+
+    const expense = useMemo(() => 
+        transactions
+            .filter(t => t.type === TransactionType.EXPENSE)
+            .reduce((sum, t) => sum + (Number(t.amount) || 0), 0)
+    , [transactions]);
+
     const profit = revenue - expense;
 
-    // Logic for Filtered Chart Data
     const chartData = useMemo(() => {
         if (transactions.length === 0) return [];
 
-        // Determine reference date (last transaction date or today)
-        const lastDate = new Date(Math.max(...transactions.map(t => new Date(t.date).getTime())));
-        const startDate = new Date(lastDate);
+        const lastDate = transactions.length > 0 
+            ? new Date(Math.max(...transactions.map(t => new Date(t.date).getTime())))
+            : new Date();
         
+        const startDate = new Date(lastDate);
         if (chartPeriod === '1M') startDate.setMonth(lastDate.getMonth() - 1);
         else if (chartPeriod === '3M') startDate.setMonth(lastDate.getMonth() - 3);
         else if (chartPeriod === '1Y') startDate.setFullYear(lastDate.getFullYear() - 1);
 
-        // Filter and aggregate by date
         const filtered = transactions.filter(t => new Date(t.date) >= startDate);
         
         const aggregated: { [key: string]: number } = {};
         filtered.forEach(t => {
             const day = t.date.split('T')[0];
-            const val = t.type === 'Income' ? t.amount : -t.amount;
+            const val = t.type === TransactionType.INCOME ? Number(t.amount) : -Number(t.amount);
             aggregated[day] = (aggregated[day] || 0) + val;
         });
 
@@ -62,13 +73,6 @@ const Dashboard: React.FC<{ setActivePage: (p: Page) => void }> = ({ setActivePa
             .sort((a, b) => a.rawDate - b.rawDate);
     }, [transactions, chartPeriod]);
 
-    const exportData = useMemo(() => [
-        { Metric: 'Gross Revenue', Value: revenue },
-        { Metric: 'Operating Expenses', Value: expense },
-        { Metric: 'Net Margin', Value: profit },
-        { Metric: 'Transaction Count', Value: transactions.length }
-    ], [revenue, expense, profit, transactions.length]);
-
     return (
         <div className="container-fluid py-2">
             <div className="d-flex flex-column flex-md-row justify-content-between align-items-md-center mb-5 gap-3">
@@ -77,7 +81,6 @@ const Dashboard: React.FC<{ setActivePage: (p: Page) => void }> = ({ setActivePa
                     <p className="text-muted mb-0">Your fleet's performance for the current period.</p>
                 </div>
                 <div className="d-flex gap-2 d-print-none">
-                    <ExportMenu data={exportData} filename="dashboard_summary" />
                     <button onClick={() => setActivePage('Transactions')} className="btn btn-primary shadow-lg d-flex align-items-center"><Plus size={18} className="me-2"/> New Entry</button>
                 </div>
             </div>
@@ -127,7 +130,6 @@ const Dashboard: React.FC<{ setActivePage: (p: Page) => void }> = ({ setActivePa
                                         tickLine={false} 
                                         tick={{fill: '#94a3b8', fontSize: 10}} 
                                         dy={10} 
-                                        interval={chartPeriod === '1Y' ? 'preserveStartEnd' : 0}
                                         minTickGap={30}
                                     />
                                     <YAxis axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 10}} tickFormatter={(v) => `$${v/1000}k`} />
@@ -149,16 +151,16 @@ const Dashboard: React.FC<{ setActivePage: (p: Page) => void }> = ({ setActivePa
                             {transactions.slice(0, 5).map(t => (
                                 <div key={t.id} className="d-flex align-items-center justify-content-between p-2 rounded-3 hover-bg-subtle transition-all">
                                     <div className="d-flex align-items-center gap-3">
-                                        <div className={`p-2 rounded-circle ${t.type === 'Income' ? 'bg-success bg-opacity-10' : 'bg-danger bg-opacity-10'}`}>
-                                            {t.type === 'Income' ? <TrendingUp size={16} className="text-success" /> : <TrendingDown size={16} className="text-danger" />}
+                                        <div className={`p-2 rounded-circle ${t.type === TransactionType.INCOME ? 'bg-success bg-opacity-10' : 'bg-danger bg-opacity-10'}`}>
+                                            {t.type === TransactionType.INCOME ? <TrendingUp size={16} className="text-success" /> : <TrendingDown size={16} className="text-danger" />}
                                         </div>
                                         <div>
                                             <p className="fw-700 text-black mb-0 small text-truncate" style={{maxWidth: '150px'}}>{t.description}</p>
                                             <p className="text-muted mb-0" style={{fontSize: '0.7rem'}}>{formatDate(t.date)}</p>
                                         </div>
                                     </div>
-                                    <span className={`fw-800 small ${t.type === 'Income' ? 'text-success' : 'text-danger'}`}>
-                                        {t.type === 'Income' ? '+' : '-'}{formatCurrency(t.amount)}
+                                    <span className={`fw-800 small ${t.type === TransactionType.INCOME ? 'text-success' : 'text-danger'}`}>
+                                        {t.type === TransactionType.INCOME ? '+' : '-'}{formatCurrency(t.amount)}
                                     </span>
                                 </div>
                             ))}

@@ -91,70 +91,115 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const fetchData = async () => {
         setLoading(true);
         
-        // 1. Load Local State first (for offline/speed)
-        setBusinessEntities(loadFromLocal(STORAGE_KEYS.ENTITIES, mockEntities));
-        setAccounts(loadFromLocal(STORAGE_KEYS.ACCOUNTS, mockAccounts));
-        setTransactions(loadFromLocal(STORAGE_KEYS.TRANSACTIONS, mockTransactions));
-        setTrucks(loadFromLocal(STORAGE_KEYS.TRUCKS, mockTrucks));
-        setCategories(loadFromLocal(STORAGE_KEYS.CATEGORIES, allCategories));
-        setFiscalYearRecords(loadFromLocal(STORAGE_KEYS.FISCAL, []));
-        setLoadRecords(loadFromLocal(STORAGE_KEYS.LOADS, []));
+        // 1. Initial Load (Local)
+        const localEntities = loadFromLocal(STORAGE_KEYS.ENTITIES, mockEntities);
+        const localAccounts = loadFromLocal(STORAGE_KEYS.ACCOUNTS, mockAccounts);
+        const localTransactions = loadFromLocal(STORAGE_KEYS.TRANSACTIONS, mockTransactions);
+        const localTrucks = loadFromLocal(STORAGE_KEYS.TRUCKS, mockTrucks);
+        const localCategories = loadFromLocal(STORAGE_KEYS.CATEGORIES, allCategories);
+        const localLoads = loadFromLocal(STORAGE_KEYS.LOADS, []);
 
-        // 2. Sync with Cloud if available
+        // 2. Sync with Cloud (Overwrites Local if successful)
         if (isSupabaseConfigured && supabase) {
             try {
                 const [loadsRes, transRes, truckRes, catRes, accRes, entityRes] = await Promise.all([
                     supabase.from('loads').select('*'),
-                    supabase.from('transactions').select('*'),
+                    supabase.from('transactions').select('*, categories(id, name, type, is_tax_deductible), trucks(id, unit_number, make, model, year)'),
                     supabase.from('trucks').select('*'),
                     supabase.from('categories').select('*'),
                     supabase.from('bank_accounts').select('*'),
                     supabase.from('business_entities').select('*')
                 ]);
 
+                if (entityRes.data) setBusinessEntities(entityRes.data);
+                else setBusinessEntities(localEntities);
+
+                if (accRes.data) setAccounts(accRes.data.map(a => ({
+                    id: a.id, name: a.name, type: a.type, initialBalance: parseFloat(a.initial_balance) || 0, businessEntityId: a.business_entity_id
+                })));
+                else setAccounts(localAccounts);
+
+                if (catRes.data) setCategories(catRes.data.map(c => ({
+                    id: c.id, name: c.name, type: c.type as TransactionType, isTaxDeductible: c.is_tax_deductible
+                })));
+                else setCategories(localCategories);
+
+                if (truckRes.data) setTrucks(truckRes.data.map(t => ({
+                    id: t.id, unitNumber: t.unit_number, make: t.make, model: t.model, year: t.year
+                })));
+                else setTrucks(localTrucks);
+
                 if (loadsRes.data) {
-                    const mapped = loadsRes.data.map(l => ({
+                    const mappedLoads = loadsRes.data.map(l => ({
                         id: l.id,
                         currentLocation: l.current_location,
-                        milesToPickup: Number(l.miles_to_pickup),
+                        milesToPickup: parseFloat(l.miles_to_pickup) || 0,
                         pickupLocation: l.pickup_location,
                         pickupDate: l.pickup_date,
-                        milesToDelivery: Number(l.miles_to_delivery),
+                        milesToDelivery: parseFloat(l.miles_to_delivery) || 0,
                         deliveryLocation: l.delivery_location,
                         deliveryDate: l.delivery_date,
-                        totalMiles: Number(l.total_miles),
+                        totalMiles: (parseFloat(l.miles_to_pickup) || 0) + (parseFloat(l.miles_to_delivery) || 0),
                         paymentType: l.payment_type,
-                        rate: Number(l.rate),
-                        totalRevenue: Number(l.total_revenue),
+                        rate: parseFloat(l.rate) || 0,
+                        totalRevenue: parseFloat(l.total_revenue) || 0,
                         truckId: l.truck_id,
                         status: l.status
                     }));
-                    setLoadRecords(mapped);
-                    saveToLocal(STORAGE_KEYS.LOADS, mapped);
-                }
+                    setLoadRecords(mappedLoads);
+                    saveToLocal(STORAGE_KEYS.LOADS, mappedLoads);
+                } else setLoadRecords(localLoads);
 
-                if (truckRes.data) {
-                    const mappedTrucks = truckRes.data.map(t => ({
+                if (transRes.data) {
+                    const mappedTrans = transRes.data.map(t => ({
                         id: t.id,
-                        unitNumber: t.unit_number,
-                        make: t.make,
-                        model: t.model,
-                        year: t.year
+                        date: t.date,
+                        description: t.description,
+                        amount: parseFloat(t.amount) || 0,
+                        type: t.type as TransactionType,
+                        accountId: t.account_id,
+                        toAccountId: t.to_account_id,
+                        category: t.categories ? {
+                            id: t.categories.id,
+                            name: t.categories.name,
+                            type: t.categories.type as TransactionType,
+                            isTaxDeductible: t.categories.is_tax_deductible
+                        } : undefined,
+                        truck: t.trucks ? {
+                            id: t.trucks.id,
+                            unitNumber: t.trucks.unit_number,
+                            make: t.trucks.make,
+                            model: t.trucks.model,
+                            year: t.trucks.year
+                        } : undefined
                     }));
-                    setTrucks(mappedTrucks);
-                    saveToLocal(STORAGE_KEYS.TRUCKS, mappedTrucks);
-                }
+                    setTransactions(mappedTrans);
+                    saveToLocal(STORAGE_KEYS.TRANSACTIONS, mappedTrans);
+                } else setTransactions(localTransactions);
 
-                // Note: Categories and other tables follow similar pattern.
-                // We'll prioritize Cloud data if it exists.
             } catch (error) {
-                console.error("Cloud synchronization failed.", error);
+                console.error("Critical Cloud Sync Error:", error);
+                // Fallback to local if cloud fails during fetch
+                setBusinessEntities(localEntities);
+                setAccounts(localAccounts);
+                setTransactions(localTransactions);
+                setTrucks(localTrucks);
+                setCategories(localCategories);
+                setLoadRecords(localLoads);
             }
+        } else {
+            // No Supabase, use local
+            setBusinessEntities(localEntities);
+            setAccounts(localAccounts);
+            setTransactions(localTransactions);
+            setTrucks(localTrucks);
+            setCategories(localCategories);
+            setLoadRecords(localLoads);
         }
         setLoading(false);
     };
 
-    // --- GENERIC SYNC HELPER ---
+    // Helper para garantir que números sejam salvos como números
     const syncToCloud = async (table: string, id: string, data: any, method: 'insert' | 'update' | 'delete') => {
         if (!isSupabaseConfigured || !supabase) return true;
         try {
@@ -172,166 +217,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
     };
 
-    // --- LOADS SYNC ---
-    const addLocalLoad = async (l: LoadRecord) => {
-        const updated = [l, ...loadRecords];
-        setLoadRecords(updated);
-        saveToLocal(STORAGE_KEYS.LOADS, updated);
-
-        return await syncToCloud('loads', l.id, {
-            id: l.id,
-            current_location: l.currentLocation,
-            miles_to_pickup: l.milesToPickup,
-            pickup_location: l.pickupLocation,
-            pickup_date: l.pickupDate,
-            miles_to_delivery: l.milesToDelivery,
-            delivery_location: l.deliveryLocation,
-            delivery_date: l.deliveryDate,
-            payment_type: l.paymentType,
-            rate: l.rate,
-            total_revenue: l.totalRevenue,
-            truck_id: l.truckId,
-            status: l.status
-        }, 'insert');
-    };
-
-    const updateLocalLoad = async (l: LoadRecord) => {
-        const updated = loadRecords.map(item => item.id === l.id ? l : item);
-        setLoadRecords(updated);
-        saveToLocal(STORAGE_KEYS.LOADS, updated);
-
-        return await syncToCloud('loads', l.id, {
-            current_location: l.currentLocation,
-            miles_to_pickup: l.milesToPickup,
-            pickup_location: l.pickupLocation,
-            pickup_date: l.pickupDate,
-            miles_to_delivery: l.milesToDelivery,
-            delivery_location: l.deliveryLocation,
-            delivery_date: l.deliveryDate,
-            payment_type: l.paymentType,
-            rate: l.rate,
-            total_revenue: l.totalRevenue,
-            truck_id: l.truckId,
-            status: l.status
-        }, 'update');
-    };
-
-    const deleteLocalLoad = async (id: string) => {
-        const updated = loadRecords.filter(item => item.id !== id);
-        setLoadRecords(updated);
-        saveToLocal(STORAGE_KEYS.LOADS, updated);
-        await syncToCloud('loads', id, null, 'delete');
-    };
-
-    // --- TRUCKS SYNC ---
-    const addLocalTruck = async (t: Truck) => {
-        const updated = [...trucks, t];
-        setTrucks(updated);
-        saveToLocal(STORAGE_KEYS.TRUCKS, updated);
-        return await syncToCloud('trucks', t.id, {
-            id: t.id,
-            unit_number: t.unitNumber,
-            make: t.make,
-            model: t.model,
-            year: t.year
-        }, 'insert');
-    };
-
-    const updateLocalTruck = async (t: Truck) => {
-        const updated = trucks.map(item => item.id === t.id ? t : item);
-        setTrucks(updated);
-        saveToLocal(STORAGE_KEYS.TRUCKS, updated);
-        return await syncToCloud('trucks', t.id, {
-            unit_number: t.unitNumber,
-            make: t.make,
-            model: t.model,
-            year: t.year
-        }, 'update');
-    };
-
-    const deleteLocalTruck = async (id: string) => {
-        const updated = trucks.filter(item => item.id !== id);
-        setTrucks(updated);
-        saveToLocal(STORAGE_KEYS.TRUCKS, updated);
-        await syncToCloud('trucks', id, null, 'delete');
-    };
-
-    // --- CATEGORIES SYNC ---
-    const addLocalCategory = async (c: Category) => {
-        const updated = [...categories, c];
-        setCategories(updated);
-        saveToLocal(STORAGE_KEYS.CATEGORIES, updated);
-        return await syncToCloud('categories', c.id, {
-            id: c.id,
-            name: c.name,
-            type: c.type,
-            is_tax_deductible: c.isTaxDeductible
-        }, 'insert');
-    };
-
-    const updateLocalCategory = async (c: Category) => {
-        const updated = categories.map(item => item.id === c.id ? c : item);
-        setCategories(updated);
-        saveToLocal(STORAGE_KEYS.CATEGORIES, updated);
-        return await syncToCloud('categories', c.id, {
-            name: c.name,
-            type: c.type,
-            is_tax_deductible: c.isTaxDeductible
-        }, 'update');
-    };
-
-    const deleteLocalCategory = async (id: string) => {
-        const updated = categories.filter(item => item.id !== id);
-        setCategories(updated);
-        saveToLocal(STORAGE_KEYS.CATEGORIES, updated);
-        await syncToCloud('categories', id, null, 'delete');
-    };
-
-    const addLocalEntity = async (e: BusinessEntity) => {
-        const updated = [...businessEntities, e];
-        setBusinessEntities(updated);
-        saveToLocal(STORAGE_KEYS.ENTITIES, updated);
-        return await syncToCloud('business_entities', e.id, {
-            id: e.id,
-            name: e.name,
-            structure: e.structure,
-            tax_form: e.taxForm,
-            ein: e.ein,
-            email: e.email,
-            phone: e.phone,
-            website: e.website,
-            address: e.address,
-            city: e.city,
-            state: e.state,
-            zip: e.zip
-        }, 'insert');
-    };
-
-    const addLocalAccount = async (a: BankAccount) => {
-        const updated = [...accounts, a];
-        setAccounts(updated);
-        saveToLocal(STORAGE_KEYS.ACCOUNTS, updated);
-        return await syncToCloud('bank_accounts', a.id, {
-            id: a.id,
-            name: a.name,
-            type: a.type,
-            initial_balance: a.initialBalance,
-            business_entity_id: a.businessEntityId
-        }, 'insert');
-    };
-
-    const updateLocalAccount = async (a: BankAccount) => {
-        const updated = accounts.map(item => item.id === a.id ? a : item);
-        setAccounts(updated);
-        saveToLocal(STORAGE_KEYS.ACCOUNTS, updated);
-        return await syncToCloud('bank_accounts', a.id, {
-            name: a.name,
-            type: a.type,
-            initial_balance: a.initialBalance,
-            business_entity_id: a.businessEntityId
-        }, 'update');
-    };
-
+    // --- WRAPPERS ---
     const addLocalTransaction = async (t: Transaction) => {
         const updated = [t, ...transactions];
         setTransactions(updated);
@@ -346,6 +232,27 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             truck_id: t.truck?.id,
             account_id: t.accountId,
             to_account_id: t.toAccountId
+        }, 'insert');
+    };
+
+    const addLocalLoad = async (l: LoadRecord) => {
+        const updated = [l, ...loadRecords];
+        setLoadRecords(updated);
+        saveToLocal(STORAGE_KEYS.LOADS, updated);
+        return await syncToCloud('loads', l.id, {
+            id: l.id,
+            current_location: l.currentLocation,
+            miles_to_pickup: l.milesToPickup,
+            pickup_location: l.pickupLocation,
+            pickup_date: l.pickupDate,
+            miles_to_delivery: l.milesToDelivery,
+            delivery_location: l.deliveryLocation,
+            delivery_date: l.delivery_date,
+            payment_type: l.paymentType,
+            rate: l.rate,
+            total_revenue: l.totalRevenue,
+            truck_id: l.truckId,
+            status: l.status
         }, 'insert');
     };
 
@@ -365,6 +272,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }, 'update');
     };
 
+    // Fix for shorthand property 'saveSystemSetting' error
     const saveSystemSetting = async (key: string, value: string) => {
         localStorage.setItem(key, value);
     };
@@ -376,57 +284,103 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             transactions, categories, trucks, accounts, businessEntities, fiscalYearRecords, loadRecords,
             reportFilter, loading, isCloudConnected: !!isSupabaseConfigured,
             refreshData: fetchData, setReportFilter,
-            addLocalEntity, updateLocalEntity: async (e) => addLocalEntity(e), 
+            addLocalEntity: async (e) => {
+                setBusinessEntities([...businessEntities, e]);
+                return syncToCloud('business_entities', e.id, e, 'insert');
+            },
+            updateLocalEntity: async (e) => {
+                setBusinessEntities(businessEntities.map(x => x.id === e.id ? e : x));
+                return syncToCloud('business_entities', e.id, e, 'update');
+            },
             deleteLocalEntity: async (id) => {
-                const updated = businessEntities.filter(item => item.id !== id);
-                setBusinessEntities(updated);
-                saveToLocal(STORAGE_KEYS.ENTITIES, updated);
+                setBusinessEntities(businessEntities.filter(x => x.id !== id));
                 await syncToCloud('business_entities', id, null, 'delete');
             },
-            addLocalAccount, updateLocalAccount, 
+            addLocalAccount: async (a) => {
+                setAccounts([...accounts, a]);
+                return syncToCloud('bank_accounts', a.id, {
+                    id: a.id, name: a.name, type: a.type, initial_balance: a.initialBalance, business_entity_id: a.businessEntityId
+                }, 'insert');
+            },
+            updateLocalAccount: async (a) => {
+                setAccounts(accounts.map(x => x.id === a.id ? a : x));
+                return syncToCloud('bank_accounts', a.id, {
+                    name: a.name, type: a.type, initial_balance: a.initialBalance, business_entity_id: a.businessEntityId
+                }, 'update');
+            },
             deleteLocalAccount: async (id) => {
-                const updated = accounts.filter(item => item.id !== id);
-                setAccounts(updated);
-                saveToLocal(STORAGE_KEYS.ACCOUNTS, updated);
+                setAccounts(accounts.filter(x => x.id !== id));
                 await syncToCloud('bank_accounts', id, null, 'delete');
             },
-            addLocalTransaction, updateLocalTransaction, 
+            addLocalTransaction, updateLocalTransaction,
             deleteLocalTransaction: async (id) => {
-                const updated = transactions.filter(item => item.id !== id);
-                setTransactions(updated);
-                saveToLocal(STORAGE_KEYS.TRANSACTIONS, updated);
+                setTransactions(transactions.filter(x => x.id !== id));
                 await syncToCloud('transactions', id, null, 'delete');
-            }, 
-            deleteLocalTransactions: async (ids) => {
-                const updated = transactions.filter(item => !ids.includes(item.id));
-                setTransactions(updated);
-                saveToLocal(STORAGE_KEYS.TRANSACTIONS, updated);
-                if (isSupabaseConfigured && supabase) {
-                    await supabase.from('transactions').delete().in('id', ids);
-                }
             },
-            addLocalTruck, updateLocalTruck, deleteLocalTruck,
-            addLocalCategory, addLocalCategories: async (list) => {
-                const updated = [...categories, ...list];
-                setCategories(updated);
-                saveToLocal(STORAGE_KEYS.CATEGORIES, updated);
+            deleteLocalTransactions: async (ids) => {
+                setTransactions(transactions.filter(x => !ids.includes(x.id)));
+                if (isSupabaseConfigured && supabase) await supabase.from('transactions').delete().in('id', ids);
+            },
+            addLocalTruck: async (t) => {
+                setTrucks([...trucks, t]);
+                return syncToCloud('trucks', t.id, {
+                    id: t.id, unit_number: t.unitNumber, make: t.make, model: t.model, year: t.year
+                }, 'insert');
+            },
+            updateLocalTruck: async (t) => {
+                setTrucks(trucks.map(x => x.id === t.id ? t : x));
+                return syncToCloud('trucks', t.id, {
+                    unit_number: t.unitNumber, make: t.make, model: t.model, year: t.year
+                }, 'update');
+            },
+            deleteLocalTruck: async (id) => {
+                setTrucks(trucks.filter(x => x.id !== id));
+                await syncToCloud('trucks', id, null, 'delete');
+            },
+            addLocalCategory: async (c) => {
+                setCategories([...categories, c]);
+                return syncToCloud('categories', c.id, {
+                    id: c.id, name: c.name, type: c.type, is_tax_deductible: c.isTaxDeductible
+                }, 'insert');
+            },
+            addLocalCategories: async (list) => {
+                setCategories([...categories, ...list]);
                 if (isSupabaseConfigured && supabase) {
                     const payload = list.map(c => ({ id: c.id, name: c.name, type: c.type, is_tax_deductible: c.isTaxDeductible }));
                     await supabase.from('categories').insert(payload);
                 }
-            }, updateLocalCategory, deleteLocalCategory,
+            },
+            updateLocalCategory: async (c) => {
+                setCategories(categories.map(x => x.id === c.id ? c : x));
+                return syncToCloud('categories', c.id, {
+                    name: c.name, type: c.type, is_tax_deductible: c.isTaxDeductible
+                }, 'update');
+            },
+            deleteLocalCategory: async (id) => {
+                setCategories(categories.filter(x => x.id !== id));
+                await syncToCloud('categories', id, null, 'delete');
+            },
             updateLocalFiscalYear: async (rec) => {
                 const updated = [...fiscalYearRecords.filter(r => r.year !== rec.year), rec];
                 setFiscalYearRecords(updated);
-                saveToLocal(STORAGE_KEYS.FISCAL, updated);
-                return await syncToCloud('fiscal_years', rec.year.toString(), {
-                    year: rec.year,
-                    status: rec.status,
-                    manual_balance: rec.manualBalance,
-                    notes: rec.notes
-                }, 'insert'); // Simplified, in SQL you might want to UPSERT
+                return syncToCloud('fiscal_years', rec.year.toString(), {
+                    year: rec.year, status: rec.status, manual_balance: rec.manualBalance, notes: rec.notes
+                }, 'insert');
             },
-            addLocalLoad, updateLocalLoad, deleteLocalLoad,
+            addLocalLoad,
+            updateLocalLoad: async (l) => {
+                setLoadRecords(loadRecords.map(x => x.id === l.id ? l : x));
+                return syncToCloud('loads', l.id, {
+                    current_location: l.currentLocation, miles_to_pickup: l.milesToPickup, pickup_location: l.pickupLocation,
+                    pickup_date: l.pickupDate, miles_to_delivery: l.milesToDelivery, delivery_location: l.deliveryLocation,
+                    delivery_date: l.deliveryDate, payment_type: l.paymentType, rate: l.rate, total_revenue: l.totalRevenue,
+                    truck_id: l.truckId, status: l.status
+                }, 'update');
+            },
+            deleteLocalLoad: async (id) => {
+                setLoadRecords(loadRecords.filter(x => x.id !== id));
+                await syncToCloud('loads', id, null, 'delete');
+            },
             saveSystemSetting
         }}>{children}</DataContext.Provider>
     );
