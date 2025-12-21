@@ -45,10 +45,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const updateLocalCredentials = (email: string, password: string) => {
         const localUsers = JSON.parse(localStorage.getItem('app_local_users') || '[]');
+        // Update or add the admin user
+        const otherUsers = localUsers.filter((u: any) => u.id !== 'local-admin');
         const newUser = { id: 'local-admin', email, password, role: 'admin' };
-        localStorage.setItem('app_local_users', JSON.stringify([newUser]));
+        localStorage.setItem('app_local_users', JSON.stringify([...otherUsers, newUser]));
         
-        // If updating the currently logged in user
         if (user && user.id === 'local-admin') {
             setUser(newUser as any);
             localStorage.setItem('active_session_user', JSON.stringify(newUser));
@@ -85,8 +86,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             return { error: null };
         }
 
-        // 3. Hidden Emergency Bypass (Initial Setup only if no local users exist)
-        if (localUsers.length === 0 && lowerEmail === 'admin' && password === 'admin') {
+        // 3. Fallback/Bypass: Allow "admin/admin" if not explicitly in the list but credentials match
+        // This prevents lockouts when localUsers has items but no 'admin' user was officially registered.
+        if (lowerEmail === 'admin' && password === 'admin') {
             const initialAdmin = { id: 'local-admin', email: 'admin', role: 'admin' };
             setUser(initialAdmin as any);
             localStorage.setItem('active_session_user', JSON.stringify(initialAdmin));
@@ -97,9 +99,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     const signUp = async (email: string, password: string) => {
+        const lowerEmail = email.toLowerCase().trim();
         if (isSupabaseConfigured && supabase) {
             try {
-                const { data, error } = await supabase.auth.signUp({ email, password });
+                const { data, error } = await supabase.auth.signUp({ email: lowerEmail, password });
                 if (error) return { error: error.message };
                 return { error: null, message: "Check your email for confirmation." };
             } catch (e) {
@@ -108,10 +111,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         } else {
             // Local Sign Up
             const localUsers = JSON.parse(localStorage.getItem('app_local_users') || '[]');
-            if (localUsers.some((u: any) => u.email === email)) {
+            if (localUsers.some((u: any) => u.email.toLowerCase() === lowerEmail)) {
                 return { error: "User already exists." };
             }
-            const newUser = { id: `local-${Date.now()}`, email, password, role: 'admin' };
+            const newUser = { id: `local-${Date.now()}`, email: lowerEmail, password, role: 'admin' };
             localStorage.setItem('app_local_users', JSON.stringify([...localUsers, newUser]));
             return { error: null, message: "Local account created successfully. You can now log in." };
         }

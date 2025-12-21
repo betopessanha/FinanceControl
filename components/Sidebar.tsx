@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { LayoutDashboard, FileText, BarChart2, Truck, UserCircle, X, Tags, Landmark, CalendarRange, Wallet, LogOut, Settings, Building2, ChevronRight, Zap } from 'lucide-react';
+import { LayoutDashboard, FileText, BarChart2, Truck, UserCircle, X, Tags, Landmark, CalendarRange, Wallet, LogOut, Settings, Building2, ChevronRight, Zap, Users } from 'lucide-react';
 import { Page } from '../App';
 import { useAuth } from '../lib/AuthContext';
 
@@ -17,7 +17,13 @@ const NavItem: React.FC<{
   isActive: boolean;
   onClick: () => void;
 }> = ({ icon: Icon, label, isActive, onClick }) => {
-  const displayLabel = label === 'FiscalYears' ? 'Periods' : label === 'Tax' ? 'Tax Hub' : label;
+  const displayLabels: Partial<Record<Page, string>> = {
+    FiscalYears: 'Periods',
+    Tax: 'Tax Hub',
+    Users: 'Team Members'
+  };
+  
+  const displayLabel = displayLabels[label] || label;
 
   return (
     <li className="nav-item">
@@ -90,8 +96,8 @@ const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage, isOpen, se
 
             <div className="px-4 mb-3"><small className="text-uppercase fw-800 text-muted" style={{fontSize: '0.65rem', letterSpacing: '0.1em'}}>System</small></div>
             <ul className="nav flex-column">
-              {['Tax', 'FiscalYears', 'Settings'].map((item) => (
-                <NavItem key={item} icon={item === 'Tax' ? Landmark : item === 'FiscalYears' ? CalendarRange : Settings} label={item as Page} isActive={activePage === item} onClick={() => handleNavigation(item as Page)} />
+              {['Tax', 'FiscalYears', 'Users'].map((item) => (
+                <NavItem key={item} icon={item === 'Tax' ? Landmark : item === 'FiscalYears' ? CalendarRange : Users} label={item as Page} isActive={activePage === item} onClick={() => handleNavigation(item as Page)} />
               ))}
             </ul>
         </div>
@@ -99,7 +105,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage, isOpen, se
         <div className="p-4 mt-auto">
             <div className="bg-subtle p-3 rounded-4 border">
                 <div className="d-flex align-items-center gap-3 mb-3">
-                    <div className="bg-black rounded-circle p-1"><UserCircle className="text-white" size={24} /></div>
+                    <div className="bg-black rounded-circle p-1" style={{cursor: 'pointer'}} onClick={() => handleNavigation('Profile')}><UserCircle className="text-white" size={24} /></div>
                     <div className="overflow-hidden">
                         <p className="fw-700 text-black mb-0 text-truncate small">{user?.email?.split('@')[0]}</p>
                         <p className="text-muted mb-0 small" style={{fontSize: '0.7rem'}}>Administrator</p>

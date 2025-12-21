@@ -1,16 +1,18 @@
 
 import React from 'react';
-import { Menu, Search, Cloud, CloudOff, UserCircle, Bell, Settings } from 'lucide-react';
+import { Menu, Search, Cloud, CloudOff, UserCircle, Bell, Settings as SettingsIcon } from 'lucide-react';
 import { useData } from '../lib/DataContext';
 import { useAuth } from '../lib/AuthContext';
+import { Page } from '../App';
 
 interface HeaderProps {
   title: string;
   icon: React.ElementType;
   onMenuClick: () => void;
+  setActivePage: (page: Page) => void;
 }
 
-const Header: React.FC<HeaderProps> = ({ title, icon: Icon, onMenuClick }) => {
+const Header: React.FC<HeaderProps> = ({ title, icon: Icon, onMenuClick, setActivePage }) => {
   const { isCloudConnected } = useData();
   const { user } = useAuth();
 
@@ -49,11 +51,22 @@ const Header: React.FC<HeaderProps> = ({ title, icon: Icon, onMenuClick }) => {
           </div>
 
           <button className="btn btn-white border-0 position-relative p-2"><Bell size={20} /><span className="position-absolute top-0 start-100 translate-middle p-1 bg-danger border border-white rounded-circle"></span></button>
-          <button className="btn btn-white border-0 p-2"><Settings size={20} /></button>
+          <button 
+            className={`btn btn-white border-0 p-2 ${title === 'Settings' ? 'text-primary bg-subtle' : ''}`}
+            onClick={() => setActivePage('Settings')}
+            title="System Settings"
+          >
+            <SettingsIcon size={20} />
+          </button>
           
-          <div className="bg-black rounded-circle p-1 ms-2 shadow-sm d-flex align-items-center justify-content-center" style={{ width: 34, height: 34 }}>
+          <button 
+            className={`btn p-1 ms-2 shadow-sm d-flex align-items-center justify-content-center rounded-circle border-0 ${title === 'Profile' ? 'bg-primary' : 'bg-black'}`} 
+            style={{ width: 34, height: 34, transition: 'all 0.2s ease' }}
+            onClick={() => setActivePage('Profile')}
+            title="My Profile"
+          >
               <UserCircle size={24} className="text-white" />
-          </div>
+          </button>
         </div>
       </div>
     </header>

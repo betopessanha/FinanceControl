@@ -10,14 +10,16 @@ import FiscalYears from './components/FiscalYears';
 import BankAccounts from './components/BankAccounts';
 import Companies from './components/Companies';
 import Settings from './components/Settings';
+import Profile from './components/Profile';
+import UserManagement from './components/UserManagement';
 import Header from './components/Header';
 import Login from './components/Login';
-import { Truck, FileText, LayoutDashboard, BarChart2, Tags, Landmark, CalendarRange, Wallet, Loader2, Settings as SettingsIcon, Building2 } from 'lucide-react';
+import { Truck, FileText, LayoutDashboard, BarChart2, Tags, Landmark, CalendarRange, Wallet, Loader2, Settings as SettingsIcon, Building2, User, Users } from 'lucide-react';
 import Trucks from './components/Trucks';
 import { DataProvider } from './lib/DataContext';
 import { AuthProvider, useAuth } from './lib/AuthContext';
 
-export type Page = 'Dashboard' | 'Transactions' | 'Reports' | 'Trucks' | 'Categories' | 'Tax' | 'FiscalYears' | 'Accounts' | 'Companies' | 'Settings';
+export type Page = 'Dashboard' | 'Transactions' | 'Reports' | 'Trucks' | 'Categories' | 'Tax' | 'FiscalYears' | 'Accounts' | 'Companies' | 'Settings' | 'Profile' | 'Users';
 
 const MainLayout: React.FC = () => {
     const [activePage, setActivePage] = useState<Page>('Dashboard');
@@ -58,6 +60,10 @@ const MainLayout: React.FC = () => {
             return <FiscalYears />;
         case 'Settings':
             return <Settings />;
+        case 'Profile':
+            return <Profile />;
+        case 'Users':
+            return <UserManagement />;
         default:
             return <Dashboard setActivePage={setActivePage} />;
         }
@@ -74,6 +80,8 @@ const MainLayout: React.FC = () => {
         Accounts: Wallet,
         Companies: Building2,
         Settings: SettingsIcon,
+        Profile: User,
+        Users: Users,
     };
 
     return (
@@ -90,6 +98,7 @@ const MainLayout: React.FC = () => {
                         title={activePage} 
                         icon={pageIcons[activePage]}
                         onMenuClick={() => setIsSidebarOpen(true)}
+                        setActivePage={setActivePage}
                     />
                     <main className="flex-grow-1 overflow-auto bg-light p-3 p-md-4">
                         <div className="container-fluid p-0">
