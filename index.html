@@ -68,7 +68,7 @@
           transform: translateX(0);
         }
         main {
-          padding-bottom: 90px !important; /* Mais espaço para bottom nav no S25 */
+          padding-bottom: 90px !important;
         }
       }
 
@@ -213,7 +213,6 @@
         min-width: 250px;
       }
 
-      /* Ajuste da coluna fixa para mobile: mantém fixa mas reduz largura */
       @media (max-width: 768px) {
         .sticky-column { 
             min-width: 140px; 
@@ -227,12 +226,55 @@
       ::-webkit-scrollbar-thumb { background: #e5e7eb; border-radius: 10px; }
       ::-webkit-scrollbar-thumb:hover { background: #d1d5db; }
 
-      /* Print Styles */
+      /* Print Styles - Refined for SPAs */
       @media print {
-        .sidebar, .glass-header, .d-print-none, .btn-group, button, .bottom-nav {
+        /* Hide UI components */
+        .sidebar, .glass-header, .d-print-none, .btn-group, button, .bottom-nav, .dropdown, .modal-backdrop, .modal {
           display: none !important;
         }
-        body, html { background-color: white !important; }
+        
+        /* Reset layout for natural document flow */
+        body, html, #root, .vh-100, .overflow-hidden, .overflow-auto, main, .container-fluid, .d-flex {
+          height: auto !important;
+          overflow: visible !important;
+          position: static !important;
+          display: block !important;
+        }
+
+        /* Prevent table cutting */
+        .table-responsive {
+          overflow: visible !important;
+          height: auto !important;
+        }
+        
+        .desktop-table-view {
+          display: block !important;
+        }
+
+        .mobile-card-list {
+          display: none !important;
+        }
+
+        .card { 
+          border: 1px solid #eee !important; 
+          box-shadow: none !important; 
+          break-inside: avoid;
+          margin-bottom: 20px !important;
+        }
+
+        body { 
+          background-color: white !important; 
+          padding: 0 !important;
+          margin: 0 !important;
+        }
+        
+        main {
+          padding: 0 !important;
+        }
+
+        @page {
+          margin: 2cm;
+        }
       }
     </style>
   </head>

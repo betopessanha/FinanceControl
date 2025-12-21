@@ -5,6 +5,11 @@ export enum TransactionType {
   TRANSFER = 'Transfer',
 }
 
+export enum PaymentType {
+  PER_MILE = 'Per Mile',
+  FLAT_LOAD = 'Flat Load',
+}
+
 export interface Category {
   id: string;
   name: string;
@@ -70,4 +75,21 @@ export interface Transaction {
   accountId: string;
   toAccountId?: string;
   receipts?: string[]; 
+}
+
+export interface LoadRecord {
+  id: string;
+  currentLocation: string;
+  milesToPickup: number;
+  pickupLocation: string;
+  pickupDate?: string;
+  milesToDelivery: number;
+  deliveryLocation: string;
+  deliveryDate?: string;
+  totalMiles: number;
+  paymentType: PaymentType;
+  rate: number; // Rate per mile or flat amount
+  totalRevenue: number;
+  truckId?: string;
+  status: 'Planned' | 'In Progress' | 'Delivered' | 'Paid';
 }

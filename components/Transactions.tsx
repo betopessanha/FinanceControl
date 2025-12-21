@@ -7,7 +7,6 @@ import { PlusCircle, Search, Filter, MoreHorizontal, ArrowDownCircle, ArrowUpCir
 import Modal from './ui/Modal';
 import { GoogleGenAI, Type } from "@google/genai";
 import { useData } from '../lib/DataContext';
-import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import ExportMenu from './ui/ExportMenu';
 
 // --- Sub-components ---
@@ -33,7 +32,6 @@ const TransactionFormModal: React.FC<TransactionFormModalProps> = ({ isOpen, onC
     const [toAccountId, setToAccountId] = useState('');
     const [truckId, setTruckId] = useState('');
     const [receipts, setReceipts] = useState<string[]>([]);
-    const [newReceiptUrl, setNewReceiptUrl] = useState('');
 
     // AI State
     const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -242,9 +240,9 @@ const TransactionFormModal: React.FC<TransactionFormModalProps> = ({ isOpen, onC
 
 const Transactions: React.FC = () => {
     const { 
-        transactions, categories, accounts, refreshData, loading, 
+        transactions, accounts, loading, 
         reportFilter, setReportFilter,
-        addLocalTransaction, updateLocalTransaction, deleteLocalTransaction, deleteLocalTransactions
+        addLocalTransaction, updateLocalTransaction, deleteLocalTransaction
     } = useData();
     
     const [searchTerm, setSearchTerm] = useState('');
@@ -253,14 +251,8 @@ const Transactions: React.FC = () => {
     const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
     const [filterCategories, setFilterCategories] = useState<string[] | null>(null);
     const [selectedIds, setSelectedIds] = useState<string[]>([]);
-    const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
-    const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
     const [isFormModalOpen, setIsFormModalOpen] = useState(false);
-    const [isImportModalOpen, setIsImportModalOpen] = useState(false);
     const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
-    const [viewReceiptsTransaction, setViewReceiptsTransaction] = useState<Transaction | null>(null);
-
-    const availableYears: number[] = Array.from(new Set(transactions.map((t: any) => new Date(t.date).getFullYear()))).sort((a: number, b: number) => b - a) as number[];
 
     useEffect(() => {
         if (reportFilter) {
@@ -271,21 +263,16 @@ const Transactions: React.FC = () => {
         }
     }, [reportFilter]);
 
-    const handleClearReportFilter = () => {
-        setReportFilter(null);
-        setFilterCategories(null);
-    };
-
     const handleSaveTransaction = async (transactionData: Omit<Transaction, 'id'>, id?: string) => {
         const fullTransactionObj: Transaction = { id: id || `temp-${Date.now()}`, ...transactionData };
-        if (id) updateLocalTransaction(fullTransactionObj);
-        else addLocalTransaction(fullTransactionObj);
+        if (id) await updateLocalTransaction(fullTransactionObj);
+        else await addLocalTransaction(fullTransactionObj);
         setIsFormModalOpen(false);
         setEditingTransaction(null);
     };
 
     const handleTransactionDelete = async (id: string) => {
-        deleteLocalTransaction(id);
+        await deleteLocalTransaction(id);
         setIsFormModalOpen(false);
         setEditingTransaction(null);
     };
@@ -352,7 +339,6 @@ const Transactions: React.FC = () => {
                         </div>
                         
                         <div className="d-flex flex-wrap gap-2 justify-content-end align-items-center d-print-none">
-                             {selectedIds.length > 0 && <button className="btn btn-danger shadow-sm" onClick={() => setIsDeleteModalOpen(true)}><Trash2 size={18} className="me-2" />Delete</button>}
                              <ExportMenu data={exportData} filename="transactions" />
                              <button onClick={() => setIsFormModalOpen(true)} className="btn btn-black d-flex align-items-center shadow-lg rounded-pill px-4">
                                 <PlusCircle size={18} className="me-2" />Add Entry
@@ -414,16 +400,11 @@ const Transactions: React.FC = () => {
                                 </div>
                             </div>
                         ))}
-                        {filteredTransactions.length === 0 && (
-                            <div className="text-center py-5">
-                                <p className="text-muted">No records found matching your filters.</p>
-                            </div>
-                        )}
                     </div>
                 </CardContent>
             </Card>
 
-            <TransactionFormModal isOpen={isFormModalOpen} onClose={() => setIsFormModalOpen(false)} onSave={handleSaveTransaction} initialData={editingTransaction} />
+            <TransactionFormModal isOpen={isFormModalOpen} onClose={() => setIsFormModalOpen(false)} onSave={handleSaveTransaction} onDelete={handleTransactionDelete} initialData={editingTransaction} />
         </div>
     );
 };

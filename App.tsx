@@ -12,14 +12,15 @@ import Companies from './components/Companies';
 import Settings from './components/Settings';
 import Profile from './components/Profile';
 import UserManagement from './components/UserManagement';
+import Loads from './components/Loads';
 import Header from './components/Header';
 import Login from './components/Login';
-import { Truck, FileText, LayoutDashboard, BarChart2, Tags, Landmark, CalendarRange, Wallet, Loader2, Settings as SettingsIcon, Building2, User, Users } from 'lucide-react';
+import { Truck, FileText, LayoutDashboard, BarChart2, Tags, Landmark, CalendarRange, Wallet, Loader2, Settings as SettingsIcon, Building2, User, Users, Map } from 'lucide-react';
 import Trucks from './components/Trucks';
 import { DataProvider } from './lib/DataContext';
 import { AuthProvider, useAuth } from './lib/AuthContext';
 
-export type Page = 'Dashboard' | 'Transactions' | 'Reports' | 'Trucks' | 'Categories' | 'Tax' | 'FiscalYears' | 'Accounts' | 'Companies' | 'Settings' | 'Profile' | 'Users';
+export type Page = 'Dashboard' | 'Transactions' | 'Reports' | 'Trucks' | 'Categories' | 'Tax' | 'FiscalYears' | 'Accounts' | 'Companies' | 'Settings' | 'Profile' | 'Users' | 'Loads';
 
 const MainLayout: React.FC = () => {
     const [activePage, setActivePage] = useState<Page>('Dashboard');
@@ -48,6 +49,8 @@ const MainLayout: React.FC = () => {
             return <Reports />;
         case 'Trucks':
             return <Trucks />;
+        case 'Loads':
+            return <Loads />;
         case 'Categories':
             return <Categories />;
         case 'Accounts':
@@ -74,6 +77,7 @@ const MainLayout: React.FC = () => {
         Transactions: FileText,
         Reports: BarChart2,
         Trucks: Truck,
+        Loads: Map,
         Categories: Tags,
         Tax: Landmark,
         FiscalYears: CalendarRange,
@@ -90,13 +94,13 @@ const MainLayout: React.FC = () => {
                 <div className="bottom-nav-icon-wrapper"><LayoutDashboard size={20} /></div>
                 <span>Overview</span>
             </a>
-            <a href="#" onClick={(e) => { e.preventDefault(); setActivePage('Transactions'); }} className={`bottom-nav-item ${activePage === 'Transactions' ? 'active' : ''}`}>
-                <div className="bottom-nav-icon-wrapper"><FileText size={20} /></div>
-                <span>Ledger</span>
+            <a href="#" onClick={(e) => { e.preventDefault(); setActivePage('Loads'); }} className={`bottom-nav-item ${activePage === 'Loads' ? 'active' : ''}`}>
+                <div className="bottom-nav-icon-wrapper"><Map size={20} /></div>
+                <span>Loads</span>
             </a>
             <a href="#" onClick={(e) => { e.preventDefault(); setActivePage('Reports'); }} className={`bottom-nav-item ${activePage === 'Reports' ? 'active' : ''}`}>
                 <div className="bottom-nav-icon-wrapper"><BarChart2 size={20} /></div>
-                <span>Profit/Loss</span>
+                <span>PnL</span>
             </a>
             <a href="#" onClick={(e) => { e.preventDefault(); setIsSidebarOpen(true); }} className="bottom-nav-item">
                 <div className="bottom-nav-icon-wrapper"><Truck size={20} /></div>

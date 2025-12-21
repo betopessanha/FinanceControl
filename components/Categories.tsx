@@ -5,7 +5,6 @@ import { Category, TransactionType } from '../types';
 import { PlusCircle, Search, Edit2, Trash2, Tag, ArrowUpCircle, ArrowDownCircle, Download, Loader2, Sparkles, CheckCircle, XCircle, Info } from 'lucide-react';
 import Modal from './ui/Modal';
 import { useData } from '../lib/DataContext';
-import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { GoogleGenAI, Type } from "@google/genai";
 
 // Standard US Trucking Categories List
@@ -146,7 +145,7 @@ const Categories: React.FC = () => {
             isTaxDeductible: c.isTaxDeductible
         }));
 
-        addLocalCategories(newCategories);
+        await addLocalCategories(newCategories);
         setIsSeeding(false);
     };
 
@@ -160,36 +159,16 @@ const Categories: React.FC = () => {
         };
 
         if (editingCategory) {
-            updateLocalCategory(categoryObj);
+            await updateLocalCategory(categoryObj);
         } else {
-            addLocalCategory(categoryObj);
-        }
-
-        if (isSupabaseConfigured && supabase) {
-            const payload = { 
-                name: formData.name, 
-                type: formData.type, 
-                is_tax_deductible: formData.isTaxDeductible 
-            };
-            try {
-                if (editingCategory) {
-                    await supabase.from('categories').update(payload).eq('id', editingCategory.id);
-                } else {
-                    await supabase.from('categories').insert([payload]);
-                }
-            } catch (error) {
-                console.warn("DB save failed", error);
-            }
+            await addLocalCategory(categoryObj);
         }
         setIsModalOpen(false);
     };
 
     const handleDelete = async (id: string) => {
         if (window.confirm('Are you sure?')) {
-            deleteLocalCategory(id);
-            if (isSupabaseConfigured && supabase) {
-                await supabase.from('categories').delete().eq('id', id);
-            }
+            await deleteLocalCategory(id);
         }
     };
 

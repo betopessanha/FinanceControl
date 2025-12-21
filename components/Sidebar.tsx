@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { LayoutDashboard, FileText, BarChart2, Truck, UserCircle, X, Tags, Landmark, CalendarRange, Wallet, LogOut, Settings as SettingsIcon, Building2, ChevronRight, Zap, Users } from 'lucide-react';
+import { LayoutDashboard, FileText, BarChart2, Truck, UserCircle, X, Tags, Landmark, CalendarRange, Wallet, LogOut, Settings as SettingsIcon, Building2, ChevronRight, Zap, Users, Map } from 'lucide-react';
 import { Page } from '../App';
 import { useAuth } from '../lib/AuthContext';
 
@@ -21,7 +21,8 @@ const NavItem: React.FC<{
     FiscalYears: 'Periods',
     Tax: 'Tax Hub',
     Users: 'Team Members',
-    Settings: 'Settings'
+    Settings: 'Settings',
+    Loads: 'Logistics'
   };
   
   const displayLabel = displayLabels[label] || label;
@@ -90,8 +91,8 @@ const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage, isOpen, se
 
             <div className="px-4 mb-3"><small className="text-uppercase fw-800 text-muted" style={{fontSize: '0.65rem', letterSpacing: '0.1em'}}>Fleet Operations</small></div>
             <ul className="nav flex-column mb-4">
-              {['Trucks', 'Accounts', 'Companies'].map((item) => (
-                <NavItem key={item} icon={item === 'Trucks' ? Truck : item === 'Accounts' ? Wallet : Building2} label={item as Page} isActive={activePage === item} onClick={() => handleNavigation(item as Page)} />
+              {['Loads', 'Trucks', 'Accounts', 'Companies'].map((item) => (
+                <NavItem key={item} icon={item === 'Loads' ? Map : item === 'Trucks' ? Truck : item === 'Accounts' ? Wallet : Building2} label={item as Page} isActive={activePage === item} onClick={() => handleNavigation(item as Page)} />
               ))}
             </ul>
 
