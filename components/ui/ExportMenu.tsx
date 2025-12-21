@@ -24,7 +24,10 @@ const ExportMenu: React.FC<ExportMenuProps> = ({ data, filename, onExportComplet
 
     const handlePDF = () => {
         // PDF is best handled via system print which we have styled in index.html
-        window.print();
+        // Using a small timeout to let the dropdown menu close first, ensuring window.print() isn't blocked.
+        setTimeout(() => {
+            window.print();
+        }, 100);
     };
 
     const handleCopy = () => {

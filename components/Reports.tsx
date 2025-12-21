@@ -93,7 +93,7 @@ const Reports: React.FC = () => {
                         <h1 className="fw-800 tracking-tight text-black mb-1">Profit & Loss</h1>
                         <p className="text-muted mb-0 small">Performance summary for {selectedYear}.</p>
                     </div>
-                    <div className="d-flex gap-2 align-items-center">
+                    <div className="d-flex gap-2 align-items-center" style={{ zIndex: 1050 }}>
                         <div className="input-group w-auto shadow-sm me-2">
                             <span className="input-group-text bg-white border-0 text-muted small fw-bold"><Calendar size={14}/></span>
                             <select 
@@ -106,7 +106,7 @@ const Reports: React.FC = () => {
                                 ))}
                             </select>
                         </div>
-                        <div className="btn-group p-1 bg-subtle rounded-3 shadow-sm border">
+                        <div className="btn-group p-1 bg-subtle rounded-3 shadow-sm border me-2">
                             <button className={`btn btn-sm rounded-2 px-3 ${viewMode === 'standard' ? 'btn-black shadow' : 'btn-white border-0 text-muted'}`} onClick={() => setViewMode('standard')}><LayoutList size={14} /> Summary</button>
                             <button className={`btn btn-sm rounded-2 px-3 ${viewMode === 'monthly' ? 'btn-black shadow' : 'btn-white border-0 text-muted'}`} onClick={() => setViewMode('monthly')}><TableIcon size={14} /> Monthly</button>
                         </div>
@@ -177,7 +177,7 @@ const Reports: React.FC = () => {
                                 </thead>
                                 <tbody>
                                     <tr className="bg-light border-bottom">
-                                        <td colSpan={months.length + 2} className="ps-4 py-3 fw-800 text-success small sticky-column border-end">OPERATING REVENUE</td>
+                                        <td colSpan={months.length + 2} className="ps-4 py-3 fw-800 text-success small sticky-column border-end bg-light">OPERATING REVENUE</td>
                                     </tr>
                                     {incomeCategories.map(cat => {
                                         const monthly = getMonthlyData(cat);
@@ -185,20 +185,20 @@ const Reports: React.FC = () => {
                                         if (total === 0) return null;
                                         return (
                                             <tr key={cat.id} className="border-bottom">
-                                                <td className="ps-5 py-3 fw-600 text-dark sticky-column border-end">{cat.name}</td>
+                                                <td className="ps-5 py-3 fw-600 text-dark sticky-column border-end bg-white">{cat.name}</td>
                                                 {monthly.map((val, idx) => <td key={idx} className="text-center small">{val > 0 ? formatCurrency(val).replace('.00', '') : '-'}</td>)}
                                                 <td className="text-end pe-4 fw-700 text-success border-start bg-light bg-opacity-50">{formatCurrency(total)}</td>
                                             </tr>
                                         );
                                     })}
                                     <tr className="bg-success-subtle border-bottom">
-                                        <td className="ps-4 py-3 fw-800 text-success sticky-column border-end">Total Revenue</td>
-                                        {incomeMonthlyTotals.map((val, idx) => <td key={idx} className="text-center fw-800 text-success small">{formatCurrency(val).replace('.00', '')}</td>)}
-                                        <td className="text-end pe-4 fw-900 text-success border-start">{formatCurrency(totalIncome)}</td>
+                                        <td className="ps-4 py-3 fw-800 text-success sticky-column border-end bg-success-subtle">Total Revenue</td>
+                                        {incomeMonthlyTotals.map((val, idx) => <td key={idx} className="text-center fw-800 text-success small bg-success-subtle">{formatCurrency(val).replace('.00', '')}</td>)}
+                                        <td className="text-end pe-4 fw-900 text-success border-start bg-success-subtle">{formatCurrency(totalIncome)}</td>
                                     </tr>
                                     
                                     <tr className="bg-light border-bottom">
-                                        <td colSpan={months.length + 2} className="ps-4 py-3 fw-800 text-danger small sticky-column border-end">OPERATING EXPENSES</td>
+                                        <td colSpan={months.length + 2} className="ps-4 py-3 fw-800 text-danger small sticky-column border-end bg-light">OPERATING EXPENSES</td>
                                     </tr>
                                     {expenseCategories.map(cat => {
                                         const monthly = getMonthlyData(cat);
@@ -206,23 +206,23 @@ const Reports: React.FC = () => {
                                         if (total === 0) return null;
                                         return (
                                             <tr key={cat.id} className="border-bottom">
-                                                <td className="ps-5 py-3 fw-600 text-dark sticky-column border-end">{cat.name}</td>
+                                                <td className="ps-5 py-3 fw-600 text-dark sticky-column border-end bg-white">{cat.name}</td>
                                                 {monthly.map((val, idx) => <td key={idx} className="text-center small">{val > 0 ? formatCurrency(val).replace('.00', '') : '-'}</td>)}
                                                 <td className="text-end pe-4 fw-700 text-danger border-start bg-light bg-opacity-50">{formatCurrency(total)}</td>
                                             </tr>
                                         );
                                     })}
                                     <tr className="bg-danger-subtle border-bottom">
-                                        <td className="ps-4 py-3 fw-800 text-danger sticky-column border-end">Total Expenses</td>
-                                        {expenseMonthlyTotals.map((val, idx) => <td key={idx} className="text-center fw-800 text-danger small">{formatCurrency(val).replace('.00', '')}</td>)}
-                                        <td className="text-end pe-4 fw-900 text-danger border-start">{formatCurrency(totalExpenses)}</td>
+                                        <td className="ps-4 py-3 fw-800 text-danger sticky-column border-end bg-danger-subtle">Total Expenses</td>
+                                        {expenseMonthlyTotals.map((val, idx) => <td key={idx} className="text-center fw-800 text-danger small bg-danger-subtle">{formatCurrency(val).replace('.00', '')}</td>)}
+                                        <td className="text-end pe-4 fw-900 text-danger border-start bg-danger-subtle">{formatCurrency(totalExpenses)}</td>
                                     </tr>
 
                                     <tr style={{ height: '48px' }}><td colSpan={months.length + 2} className="bg-white border-0 sticky-column"></td></tr>
                                     <tr className="bg-dark text-white">
-                                        <td className="ps-4 py-4 fw-900 sticky-column border-end">NET PROFIT / LOSS</td>
-                                        {netMonthlyTotals.map((val, idx) => <td key={idx} className={`text-center fw-900 ${val >= 0 ? 'text-success' : 'text-danger'}`}>{formatCurrency(val).replace('.00', '')}</td>)}
-                                        <td className={`text-end pe-4 fw-900 border-start ${netIncome >= 0 ? 'text-success' : 'text-danger'}`}>{formatCurrency(netIncome)}</td>
+                                        <td className="ps-4 py-4 fw-900 sticky-column border-end bg-dark text-white">NET PROFIT / LOSS</td>
+                                        {netMonthlyTotals.map((val, idx) => <td key={idx} className={`text-center fw-900 bg-dark ${val >= 0 ? 'text-success' : 'text-danger'}`}>{formatCurrency(val).replace('.00', '')}</td>)}
+                                        <td className={`text-end pe-4 fw-900 border-start bg-dark ${netIncome >= 0 ? 'text-success' : 'text-danger'}`}>{formatCurrency(netIncome)}</td>
                                     </tr>
                                 </tbody>
                             </table>
