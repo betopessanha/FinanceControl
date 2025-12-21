@@ -64,11 +64,11 @@ const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage, isOpen, se
 
   return (
     <>
-      {isMobile && isOpen && (
-          <div className="position-fixed top-0 start-0 w-100 h-100 bg-black bg-opacity-40" style={{ zIndex: 1040 }} onClick={() => setIsOpen(false)}></div>
+      {isOpen && (
+          <div className="position-fixed top-0 start-0 w-100 h-100 bg-black bg-opacity-40" style={{ zIndex: 1040, backdropFilter: 'blur(4px)' }} onClick={() => setIsOpen(false)}></div>
       )}
 
-      <aside className={`sidebar shadow-sm d-flex flex-column h-100 d-print-none ${isMobile ? (isOpen ? 'position-fixed start-0 top-0' : 'position-fixed start-n100 top-0') : ''}`} style={{ zIndex: 1050, transition: 'all 0.4s cubic-bezier(0.16, 1, 0.3, 1)', left: isMobile && !isOpen ? '-260px' : '0' }}>
+      <aside className={`sidebar shadow-lg d-flex flex-column h-100 d-print-none ${isOpen ? 'show' : ''}`} style={{ zIndex: 2050 }}>
         <div className="p-4 d-flex align-items-center justify-content-between">
           <div className="d-flex align-items-center gap-3">
             <div className="bg-black text-white p-2 rounded-3 d-flex align-items-center justify-content-center shadow-lg">
@@ -76,7 +76,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage, isOpen, se
             </div>
             <h5 className="mb-0 fw-800 tracking-tight text-black">TRUCKING<span className="text-muted">.IO</span></h5>
           </div>
-          {isMobile && <button className="btn btn-link text-dark p-0" onClick={() => setIsOpen(false)}><X size={20} /></button>}
+          <button className="btn btn-link text-dark p-0 d-md-none" onClick={() => setIsOpen(false)}><X size={24} /></button>
         </div>
 
         <div className="flex-grow-1 overflow-auto py-2">
@@ -111,7 +111,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage, isOpen, se
                         <p className="text-muted mb-0 small" style={{fontSize: '0.7rem'}}>Administrator</p>
                     </div>
                 </div>
-                <button onClick={() => signOut()} className="btn btn-sm btn-white w-100 border fw-bold text-danger d-flex align-items-center justify-content-center">
+                <button onClick={() => signOut()} className="btn btn-sm btn-white w-100 border fw-bold text-danger d-flex align-items-center justify-content-center py-2 rounded-3">
                     <LogOut size={14} className="me-2" /> Log Out
                 </button>
             </div>

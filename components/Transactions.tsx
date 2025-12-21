@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import Card, { CardContent } from './ui/Card';
 import { Transaction, TransactionType, Category, BankAccount } from '../types';
 import { formatCurrency, formatDate, downloadCSV } from '../lib/utils';
-import { PlusCircle, Search, Filter, MoreHorizontal, ArrowDownCircle, ArrowUpCircle, Paperclip, Upload, X, Edit2, Sparkles, Loader2, Calendar, Wallet, ArrowRightLeft, ArrowRight, FileSpreadsheet, Check, UploadCloud, AlertTriangle, Trash2, Save, FileClock, CheckCircle2, ArrowDown, ArrowUp, Info, Download } from 'lucide-react';
+import { PlusCircle, Search, Filter, MoreHorizontal, ArrowDownCircle, ArrowUpCircle, Paperclip, Upload, X, Edit2, Sparkles, Loader2, Calendar, Wallet, ArrowRightLeft, ArrowRight, FileSpreadsheet, Check, UploadCloud, AlertTriangle, Trash2, Save, FileClock, CheckCircle2, ArrowDown, ArrowUp, Info, Download, ChevronRight } from 'lucide-react';
 import Modal from './ui/Modal';
 import { GoogleGenAI, Type } from "@google/genai";
 import { useData } from '../lib/DataContext';
@@ -99,13 +99,6 @@ const TransactionFormModal: React.FC<TransactionFormModalProps> = ({ isOpen, onC
         }
     };
 
-    const handleAddReceipt = () => {
-        if (newReceiptUrl) {
-            setReceipts([...receipts, newReceiptUrl]);
-            setNewReceiptUrl('');
-        }
-    };
-
     const handleAiCategorize = async () => {
         if (!description.trim()) {
             alert("Please enter a description first.");
@@ -174,21 +167,21 @@ const TransactionFormModal: React.FC<TransactionFormModalProps> = ({ isOpen, onC
 
                     <div className="col-md-6">
                         <label className="form-label fw-bold small text-muted">Date</label>
-                        <input type="date" className="form-control" value={date} onChange={e => setDate(e.target.value)} required />
+                        <input type="date" className="form-control shadow-sm" value={date} onChange={e => setDate(e.target.value)} required />
                     </div>
 
                     <div className="col-md-6">
                         <label className="form-label fw-bold small text-muted">Amount</label>
                         <div className="input-group">
                             <span className="input-group-text">$</span>
-                            <input type="number" className="form-control" value={amount} onChange={e => setAmount(e.target.value)} step="0.01" required />
+                            <input type="number" className="form-control shadow-sm" value={amount} onChange={e => setAmount(e.target.value)} step="0.01" required />
                         </div>
                     </div>
 
                     <div className="col-12">
                         <label className="form-label fw-bold small text-muted">Description</label>
                         <div className="input-group">
-                            <input type="text" className="form-control" value={description} onChange={e => setDescription(e.target.value)} required />
+                            <input type="text" className="form-control shadow-sm" value={description} onChange={e => setDescription(e.target.value)} required />
                             {type !== TransactionType.TRANSFER && (
                                 <button type="button" className="btn btn-outline-primary" onClick={handleAiCategorize} disabled={isAnalyzing || !description}>
                                     {isAnalyzing ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
@@ -202,14 +195,14 @@ const TransactionFormModal: React.FC<TransactionFormModalProps> = ({ isOpen, onC
                         <>
                             <div className="col-md-6">
                                 <label className="form-label fw-bold small text-muted">From</label>
-                                <select className="form-select" value={accountId} onChange={e => setAccountId(e.target.value)} required>
+                                <select className="form-select shadow-sm" value={accountId} onChange={e => setAccountId(e.target.value)} required>
                                     <option value="">Select Account</option>
                                     {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
                                 </select>
                             </div>
                             <div className="col-md-6">
                                 <label className="form-label fw-bold small text-muted">To</label>
-                                <select className="form-select" value={toAccountId} onChange={e => setToAccountId(e.target.value)} required>
+                                <select className="form-select shadow-sm" value={toAccountId} onChange={e => setToAccountId(e.target.value)} required>
                                     <option value="">Select Account</option>
                                     {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
                                 </select>
@@ -219,14 +212,14 @@ const TransactionFormModal: React.FC<TransactionFormModalProps> = ({ isOpen, onC
                         <>
                             <div className="col-md-6">
                                 <label className="form-label fw-bold small text-muted">Category</label>
-                                <select className="form-select" value={categoryId} onChange={e => setCategoryId(e.target.value)} required>
+                                <select className="form-select shadow-sm" value={categoryId} onChange={e => setCategoryId(e.target.value)} required>
                                     <option value="">Select...</option>
                                     {filteredCategories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                                 </select>
                             </div>
                             <div className="col-md-6">
                                 <label className="form-label fw-bold small text-muted">Account</label>
-                                <select className="form-select" value={accountId} onChange={e => setAccountId(e.target.value)} required>
+                                <select className="form-select shadow-sm" value={accountId} onChange={e => setAccountId(e.target.value)} required>
                                     <option value="">Select...</option>
                                     {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
                                 </select>
@@ -235,11 +228,11 @@ const TransactionFormModal: React.FC<TransactionFormModalProps> = ({ isOpen, onC
                     )}
                 </div>
 
-                <div className="d-flex justify-content-between gap-2 mt-4 pt-3 border-top">
-                    {initialData && onDelete && <button type="button" onClick={handleDelete} className="btn btn-danger bg-opacity-10 text-danger border-0">Delete</button>}
-                    <div className="d-flex gap-2 ms-auto">
-                        <button type="button" onClick={onClose} className="btn btn-light border">Cancel</button>
-                        <button type="submit" className="btn btn-primary">Save</button>
+                <div className="d-flex flex-column-reverse flex-md-row justify-content-between gap-2 mt-4 pt-3 border-top">
+                    {initialData && onDelete && <button type="button" onClick={handleDelete} className="btn btn-danger bg-opacity-10 text-danger border-0 py-2">Delete Transaction</button>}
+                    <div className="d-flex gap-2 ms-md-auto">
+                        <button type="button" onClick={onClose} className="btn btn-light border flex-fill flex-md-grow-0">Cancel</button>
+                        <button type="submit" className="btn btn-primary flex-fill flex-md-grow-0">Save Entry</button>
                     </div>
                 </div>
             </form>
@@ -340,36 +333,35 @@ const Transactions: React.FC = () => {
     const isIndeterminate = selectedIds.length > 0 && selectedIds.length < filteredTransactions.length;
 
     return (
-        <div className="mb-5">
+        <div className="mb-5 animate-slide-up">
              <div className="d-flex flex-column flex-md-row align-items-md-end justify-content-between gap-3 mb-4">
                 <div>
-                  <h2 className="fw-bold text-dark mb-1">Transactions</h2>
-                  <p className="text-muted mb-0">Manage payments and records.</p>
+                  <h2 className="fw-800 text-dark mb-1">Ledger & Ledger</h2>
+                  <p className="text-muted mb-0">Manage all fleet financial recordings.</p>
                 </div>
             </div>
             
             <Card>
-                <CardContent>
+                <CardContent className="p-3 p-md-4">
                     <div className="d-flex flex-column flex-lg-row justify-content-between align-items-stretch align-items-lg-center mb-4 gap-3">
                         <div className="flex-grow-1" style={{ maxWidth: '350px' }}>
                             <div className="position-relative d-print-none">
                                 <Search size={18} className="position-absolute top-50 start-0 translate-middle-y ms-3 text-muted" />
-                                <input type="text" placeholder="Search..." className="form-control ps-5 rounded-pill bg-light border-0" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+                                <input type="text" placeholder="Search description..." className="form-control ps-5 rounded-pill bg-light border-0 shadow-sm" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
                             </div>
                         </div>
                         
                         <div className="d-flex flex-wrap gap-2 justify-content-end align-items-center d-print-none">
-                             {selectedIds.length > 0 && <button className="btn btn-danger shadow-sm" onClick={() => setIsDeleteModalOpen(true)}><Trash2 size={18} className="me-2" />Delete Selected</button>}
-                             
+                             {selectedIds.length > 0 && <button className="btn btn-danger shadow-sm" onClick={() => setIsDeleteModalOpen(true)}><Trash2 size={18} className="me-2" />Delete</button>}
                              <ExportMenu data={exportData} filename="transactions" />
-
-                             <button onClick={() => setIsFormModalOpen(true)} className="btn btn-primary d-flex align-items-center shadow-sm">
-                                <PlusCircle size={18} className="me-2" />Add New
+                             <button onClick={() => setIsFormModalOpen(true)} className="btn btn-black d-flex align-items-center shadow-lg rounded-pill px-4">
+                                <PlusCircle size={18} className="me-2" />Add Entry
                              </button>
                         </div>
                     </div>
 
-                    <div className="table-responsive">
+                    {/* Desktop View */}
+                    <div className="desktop-table-view table-responsive">
                         <table className="table table-hover align-middle">
                             <thead className="table-light">
                                 <tr>
@@ -386,16 +378,47 @@ const Transactions: React.FC = () => {
                                     <tr key={t.id}>
                                         <td className="ps-3 d-print-none"><input type="checkbox" className="form-check-input" checked={selectedIds.includes(t.id)} onChange={() => handleSelectRow(t.id)} /></td>
                                         <td className="text-muted small">{formatDate(t.date)}</td>
-                                        <td className="fw-medium text-dark">{t.description}</td>
+                                        <td className="fw-bold text-dark">{t.description}</td>
                                         <td><span className={`badge rounded-pill ${t.type === 'Income' ? 'bg-success bg-opacity-10 text-success' : 'bg-danger bg-opacity-10 text-danger'}`}>{t.category?.name || 'Transfer'}</span></td>
-                                        <td className={`text-end fw-bold ${t.type === 'Income' ? 'text-success' : 'text-danger'}`}>{formatCurrency(t.amount)}</td>
+                                        <td className={`text-end fw-800 ${t.type === 'Income' ? 'text-success' : 'text-danger'}`}>{formatCurrency(t.amount)}</td>
                                         <td className="text-center d-print-none">
-                                            <button onClick={() => { setEditingTransaction(t); setIsFormModalOpen(true); }} className="btn btn-light btn-sm"><Edit2 size={16} /></button>
+                                            <button onClick={() => { setEditingTransaction(t); setIsFormModalOpen(true); }} className="btn btn-light btn-sm border rounded-pill"><Edit2 size={16} /></button>
                                         </td>
                                     </tr>
                                 ))}
                             </tbody>
                         </table>
+                    </div>
+
+                    {/* Mobile Card List */}
+                    <div className="mobile-card-list">
+                        {filteredTransactions.map(t => (
+                            <div key={t.id} className="card border-0 bg-subtle p-3 shadow-sm" onClick={() => { setEditingTransaction(t); setIsFormModalOpen(true); }}>
+                                <div className="d-flex justify-content-between align-items-start mb-2">
+                                    <div className="d-flex align-items-center gap-2">
+                                        <div className={`p-2 rounded-circle ${t.type === 'Income' ? 'bg-success bg-opacity-10 text-success' : 'bg-danger bg-opacity-10 text-danger'}`}>
+                                            {t.type === 'Income' ? <ArrowUp size={14} /> : <ArrowDown size={14} />}
+                                        </div>
+                                        <div>
+                                            <h6 className="mb-0 fw-800 text-dark">{t.description}</h6>
+                                            <small className="text-muted">{formatDate(t.date)}</small>
+                                        </div>
+                                    </div>
+                                    <div className={`fw-800 ${t.type === 'Income' ? 'text-success' : 'text-danger'}`}>
+                                        {t.type === 'Income' ? '+' : '-'}{formatCurrency(t.amount)}
+                                    </div>
+                                </div>
+                                <div className="d-flex justify-content-between align-items-center mt-2 pt-2 border-top border-dark border-opacity-10">
+                                    <span className="badge bg-white text-muted border small px-3 rounded-pill">{t.category?.name || 'Transfer'}</span>
+                                    <ChevronRight size={16} className="text-muted" />
+                                </div>
+                            </div>
+                        ))}
+                        {filteredTransactions.length === 0 && (
+                            <div className="text-center py-5">
+                                <p className="text-muted">No records found matching your filters.</p>
+                            </div>
+                        )}
                     </div>
                 </CardContent>
             </Card>

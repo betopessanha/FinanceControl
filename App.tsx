@@ -84,6 +84,27 @@ const MainLayout: React.FC = () => {
         Users: Users,
     };
 
+    const BottomNav = () => (
+        <nav className="bottom-nav d-md-none">
+            <a href="#" onClick={(e) => { e.preventDefault(); setActivePage('Dashboard'); }} className={`bottom-nav-item ${activePage === 'Dashboard' ? 'active' : ''}`}>
+                <div className="bottom-nav-icon-wrapper"><LayoutDashboard size={20} /></div>
+                <span>Overview</span>
+            </a>
+            <a href="#" onClick={(e) => { e.preventDefault(); setActivePage('Transactions'); }} className={`bottom-nav-item ${activePage === 'Transactions' ? 'active' : ''}`}>
+                <div className="bottom-nav-icon-wrapper"><FileText size={20} /></div>
+                <span>Ledger</span>
+            </a>
+            <a href="#" onClick={(e) => { e.preventDefault(); setActivePage('Reports'); }} className={`bottom-nav-item ${activePage === 'Reports' ? 'active' : ''}`}>
+                <div className="bottom-nav-icon-wrapper"><BarChart2 size={20} /></div>
+                <span>Profit/Loss</span>
+            </a>
+            <a href="#" onClick={(e) => { e.preventDefault(); setIsSidebarOpen(true); }} className="bottom-nav-item">
+                <div className="bottom-nav-icon-wrapper"><Truck size={20} /></div>
+                <span>Menu</span>
+            </a>
+        </nav>
+    );
+
     return (
         <DataProvider>
             <div className="d-flex vh-100 overflow-hidden">
@@ -100,11 +121,12 @@ const MainLayout: React.FC = () => {
                         onMenuClick={() => setIsSidebarOpen(true)}
                         setActivePage={setActivePage}
                     />
-                    <main className="flex-grow-1 overflow-auto bg-light p-3 p-md-4">
+                    <main className="flex-grow-1 overflow-auto bg-light p-2 p-md-4">
                         <div className="container-fluid p-0">
                             {renderPage()}
                         </div>
                     </main>
+                    <BottomNav />
                 </div>
             </div>
         </DataProvider>
