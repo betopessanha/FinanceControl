@@ -11,6 +11,7 @@ interface ExportMenuProps {
 
 const ExportMenu: React.FC<ExportMenuProps> = ({ data, filename, onExportComplete }) => {
     const [isExporting, setIsExporting] = useState(false);
+    const [isPreparingPDF, setIsPreparingPDF] = useState(false);
     const [showCopied, setShowCopied] = useState(false);
 
     const handleCSV = () => {
@@ -23,11 +24,16 @@ const ExportMenu: React.FC<ExportMenuProps> = ({ data, filename, onExportComplet
     };
 
     const handlePDF = () => {
-        // PDF is best handled via system print which we have styled in index.html
-        // Using a small timeout to let the dropdown menu close first, ensuring window.print() isn't blocked.
+        setIsPreparingPDF(true);
+        
+        // PDF is handled via system print styled in index.html
+        // We use a longer timeout (300ms) to ensure the dropdown menu fully closes 
+        // and the browser UI thread is ready to open the system print dialog.
         setTimeout(() => {
             window.print();
-        }, 100);
+            setIsPreparingPDF(false);
+            onExportComplete?.();
+        }, 300);
     };
 
     const handleCopy = () => {
@@ -51,21 +57,25 @@ const ExportMenu: React.FC<ExportMenuProps> = ({ data, filename, onExportComplet
                 type="button" 
                 data-bs-toggle="dropdown" 
                 aria-expanded="false"
-                disabled={isExporting}
+                disabled={isExporting || isPreparingPDF}
             >
-                {isExporting ? <Loader2 size={18} className="me-2 animate-spin"/> : <Download size={18} className="me-2"/>}
-                Export
+                {isExporting || isPreparingPDF ? (
+                    <Loader2 size={18} className="me-2 animate-spin"/>
+                ) : (
+                    <Download size={18} className="me-2"/>
+                )}
+                {isPreparingPDF ? 'Preparing...' : 'Export'}
                 <ChevronDown size={14} className="ms-2 opacity-50" />
             </button>
             <ul className="dropdown-menu dropdown-menu-end shadow-lg border-0 rounded-4 p-2 mt-2">
                 <li>
-                    <button className="dropdown-item rounded-3 d-flex align-items-center gap-2 py-2" onClick={handleCSV}>
+                    <button type="button" className="dropdown-item rounded-3 d-flex align-items-center gap-2 py-2" onClick={handleCSV}>
                         <FileText size={16} className="text-muted" />
                         <span>CSV Spreadsheet (.csv)</span>
                     </button>
                 </li>
                 <li>
-                    <button className="dropdown-item rounded-3 d-flex align-items-center gap-2 py-2" onClick={handlePDF}>
+                    <button type="button" className="dropdown-item rounded-3 d-flex align-items-center gap-2 py-2" onClick={handlePDF}>
                         <Printer size={16} className="text-muted" />
                         <span>PDF Document / Print</span>
                     </button>
@@ -74,7 +84,7 @@ const ExportMenu: React.FC<ExportMenuProps> = ({ data, filename, onExportComplet
                     <hr className="dropdown-divider opacity-50" />
                 </li>
                 <li>
-                    <button className="dropdown-item rounded-3 d-flex align-items-center gap-2 py-2" onClick={handleCopy}>
+                    <button type="button" className="dropdown-item rounded-3 d-flex align-items-center gap-2 py-2" onClick={handleCopy}>
                         {showCopied ? <Check size={16} className="text-success" /> : <Copy size={16} className="text-muted" />}
                         <span>{showCopied ? 'Copied to Clipboard!' : 'Copy to Clipboard'}</span>
                     </button>

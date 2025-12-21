@@ -197,59 +197,83 @@
         .table-sticky-header thead th { top: 0px; }
       }
 
-      /* Print Styles */
+      /* Enhanced Print Media Styles */
       @media print {
-        /* Reset and Hide UI */
-        .sidebar, .glass-header, .d-print-none, .btn-group, button, .input-group, .dropdown-menu {
+        /* Hide all UI elements */
+        .sidebar, 
+        .glass-header, 
+        header, 
+        nav, 
+        aside, 
+        .d-print-none, 
+        .btn-group, 
+        button, 
+        .input-group, 
+        .dropdown-menu,
+        .dropdown {
           display: none !important;
         }
         
-        body, html { 
+        /* Force body to be full width and height for printing */
+        body, html, #root, .vh-100 { 
           background-color: white !important; 
           padding: 0 !important; 
           margin: 0 !important;
           width: 100% !important;
+          height: auto !important;
+          overflow: visible !important;
+          display: block !important;
         }
 
-        /* Unfold scrollable containers */
+        /* Unfold all nested scrollable containers in the main view */
+        main, 
+        .flex-grow-1, 
+        .overflow-auto, 
+        .overflow-hidden, 
         .table-responsive {
           overflow: visible !important;
           max-height: none !important;
+          height: auto !important;
           width: 100% !important;
+          position: static !important;
         }
 
-        /* Adjust Table for A4 */
+        /* Adjust Tables for Paper */
         .table-sticky-header {
           table-layout: auto !important;
           width: 100% !important;
+          border-collapse: collapse !important;
         }
 
-        /* Remove fixed headers/columns for paper */
+        /* Remove fixed headers/columns for paper to prevent overlapping text */
         .table-sticky-header thead th, 
         .sticky-column {
           position: static !important;
           box-shadow: none !important;
-          background-color: white !important;
+          background-color: transparent !important;
+          color: black !important;
+          border-bottom: 1px solid #dee2e6 !important;
         }
 
         .sticky-column {
           min-width: 0 !important;
         }
 
-        /* Preserve Colors in PDF/Print */
+        /* Ensure colors and backgrounds are printed correctly */
         * {
           -webkit-print-color-adjust: exact !important;
           print-color-adjust: exact !important;
         }
 
-        /* Page Breaks */
+        /* Row management */
         tr {
           page-break-inside: avoid;
         }
 
         .card {
           box-shadow: none !important;
-          border: none !important;
+          border: 1px solid #eee !important;
+          border-radius: 0 !important;
         }
 
         .container-fluid {
