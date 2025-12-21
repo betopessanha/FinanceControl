@@ -21,14 +21,46 @@ const StatCard: React.FC<{ title: string; amount: string; change: string; isPosi
     </div>
 );
 
+type Period = '1M' | '3M' | '1Y';
+
 const Dashboard: React.FC<{ setActivePage: (p: Page) => void }> = ({ setActivePage }) => {
     const { transactions } = useData();
+    const [chartPeriod, setChartPeriod] = useState<Period>('1M');
 
     const revenue = transactions.filter(t => t.type === 'Income').reduce((s, t) => s + t.amount, 0);
     const expense = transactions.filter(t => t.type === 'Expense').reduce((s, t) => s + t.amount, 0);
     const profit = revenue - expense;
 
-    const chartData = transactions.slice(0, 10).map(t => ({ name: formatDate(t.date), value: t.amount })).reverse();
+    // Logic for Filtered Chart Data
+    const chartData = useMemo(() => {
+        if (transactions.length === 0) return [];
+
+        // Determine reference date (last transaction date or today)
+        const lastDate = new Date(Math.max(...transactions.map(t => new Date(t.date).getTime())));
+        const startDate = new Date(lastDate);
+        
+        if (chartPeriod === '1M') startDate.setMonth(lastDate.getMonth() - 1);
+        else if (chartPeriod === '3M') startDate.setMonth(lastDate.getMonth() - 3);
+        else if (chartPeriod === '1Y') startDate.setFullYear(lastDate.getFullYear() - 1);
+
+        // Filter and aggregate by date
+        const filtered = transactions.filter(t => new Date(t.date) >= startDate);
+        
+        const aggregated: { [key: string]: number } = {};
+        filtered.forEach(t => {
+            const day = t.date.split('T')[0];
+            const val = t.type === 'Income' ? t.amount : -t.amount;
+            aggregated[day] = (aggregated[day] || 0) + val;
+        });
+
+        return Object.entries(aggregated)
+            .map(([date, value]) => ({ 
+                name: formatDate(date), 
+                value, 
+                rawDate: new Date(date).getTime() 
+            }))
+            .sort((a, b) => a.rawDate - b.rawDate);
+    }, [transactions, chartPeriod]);
 
     const exportData = useMemo(() => [
         { Metric: 'Gross Revenue', Value: revenue },
@@ -68,9 +100,15 @@ const Dashboard: React.FC<{ setActivePage: (p: Page) => void }> = ({ setActivePa
                         <div className="d-flex justify-content-between align-items-center mb-4">
                             <h5 className="fw-800 text-black mb-0">Cash Flow Trends</h5>
                             <div className="btn-group border rounded-3 p-1 d-print-none">
-                                <button className="btn btn-sm btn-dark rounded-2 px-3">1M</button>
-                                <button className="btn btn-sm btn-white border-0 px-3">3M</button>
-                                <button className="btn btn-sm btn-white border-0 px-3">1Y</button>
+                                {(['1M', '3M', '1Y'] as Period[]).map((p) => (
+                                    <button 
+                                        key={p}
+                                        onClick={() => setChartPeriod(p)}
+                                        className={`btn btn-sm rounded-2 px-3 transition-all ${chartPeriod === p ? 'btn-dark shadow-sm' : 'btn-white border-0 text-muted'}`}
+                                    >
+                                        {p}
+                                    </button>
+                                ))}
                             </div>
                         </div>
                         <div style={{ height: 350 }}>
@@ -83,9 +121,20 @@ const Dashboard: React.FC<{ setActivePage: (p: Page) => void }> = ({ setActivePa
                                         </linearGradient>
                                     </defs>
                                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 10}} dy={10} />
+                                    <XAxis 
+                                        dataKey="name" 
+                                        axisLine={false} 
+                                        tickLine={false} 
+                                        tick={{fill: '#94a3b8', fontSize: 10}} 
+                                        dy={10} 
+                                        interval={chartPeriod === '1Y' ? 'preserveStartEnd' : 0}
+                                        minTickGap={30}
+                                    />
                                     <YAxis axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 10}} tickFormatter={(v) => `$${v/1000}k`} />
-                                    <Tooltip contentStyle={{borderRadius: '16px', border: 'none', boxShadow: '0 10px 30px rgba(0,0,0,0.1)'}} />
+                                    <Tooltip 
+                                        contentStyle={{borderRadius: '16px', border: 'none', boxShadow: '0 10px 30px rgba(0,0,0,0.1)'}} 
+                                        formatter={(value: number) => [formatCurrency(value), 'Net Flow']}
+                                    />
                                     <Area type="monotone" dataKey="value" stroke="#000" strokeWidth={3} fillOpacity={1} fill="url(#colorValue)" />
                                 </AreaChart>
                             </ResponsiveContainer>
