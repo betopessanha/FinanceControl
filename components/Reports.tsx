@@ -77,49 +77,52 @@ const Reports: React.FC = () => {
 
     return (
         <div className="container-fluid py-2 animate-slide-up">
-            <div className="d-flex flex-column flex-md-row justify-content-between align-items-md-center mb-5 gap-3">
-                <div>
-                    <h1 className="fw-800 tracking-tight text-black mb-1">Profit & Loss</h1>
-                    <p className="text-muted mb-0">Monitor your company's income statement and monthly performance.</p>
-                </div>
-                <div className="d-flex gap-2 align-items-center">
-                    <div className="input-group w-auto shadow-sm me-2">
-                        <span className="input-group-text bg-white border-0 text-muted small fw-bold"><Calendar size={14}/></span>
-                        <select 
-                            className="form-select border-0 fw-bold text-dark small" 
-                            value={selectedYear} 
-                            onChange={(e) => setSelectedYear(Number(e.target.value))}
-                        >
-                            {availableYears.map(year => (
-                                <option key={year} value={year}>{year}</option>
-                            ))}
-                        </select>
+            {/* Sticky Header Section */}
+            <div className="sticky-report-header mb-4">
+                <div className="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3">
+                    <div>
+                        <h1 className="fw-800 tracking-tight text-black mb-1">Profit & Loss</h1>
+                        <p className="text-muted mb-0 small">Monitor company income statement and monthly performance.</p>
                     </div>
-                    <div className="btn-group p-1 bg-subtle rounded-3 shadow-sm border">
-                        <button 
-                            className={`btn btn-sm rounded-2 d-flex align-items-center gap-2 px-3 ${viewMode === 'standard' ? 'btn-black shadow' : 'btn-white border-0 text-muted'}`}
-                            onClick={() => setViewMode('standard')}
-                        >
-                            <LayoutList size={14} /> Summary
-                        </button>
-                        <button 
-                            className={`btn btn-sm rounded-2 d-flex align-items-center gap-2 px-3 ${viewMode === 'monthly' ? 'btn-black shadow' : 'btn-white border-0 text-muted'}`}
-                            onClick={() => setViewMode('monthly')}
-                        >
-                            <TableIcon size={14} /> Monthly
+                    <div className="d-flex gap-2 align-items-center">
+                        <div className="input-group w-auto shadow-sm me-2">
+                            <span className="input-group-text bg-white border-0 text-muted small fw-bold"><Calendar size={14}/></span>
+                            <select 
+                                className="form-select border-0 fw-bold text-dark small" 
+                                value={selectedYear} 
+                                onChange={(e) => setSelectedYear(Number(e.target.value))}
+                            >
+                                {availableYears.map(year => (
+                                    <option key={year} value={year}>{year}</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div className="btn-group p-1 bg-subtle rounded-3 shadow-sm border">
+                            <button 
+                                className={`btn btn-sm rounded-2 d-flex align-items-center gap-2 px-3 ${viewMode === 'standard' ? 'btn-black shadow' : 'btn-white border-0 text-muted'}`}
+                                onClick={() => setViewMode('standard')}
+                            >
+                                <LayoutList size={14} /> Summary
+                            </button>
+                            <button 
+                                className={`btn btn-sm rounded-2 d-flex align-items-center gap-2 px-3 ${viewMode === 'monthly' ? 'btn-black shadow' : 'btn-white border-0 text-muted'}`}
+                                onClick={() => setViewMode('monthly')}
+                            >
+                                <TableIcon size={14} /> Monthly
+                            </button>
+                        </div>
+                        <button className="btn btn-white border px-4 fw-bold shadow-sm d-flex align-items-center rounded-3">
+                            <Download size={18} className="me-2"/> Export
                         </button>
                     </div>
-                    <button className="btn btn-white border px-4 fw-bold shadow-sm d-flex align-items-center rounded-3">
-                        <Download size={18} className="me-2"/> Export
-                    </button>
                 </div>
             </div>
 
-            <Card className="shadow-lg border-0">
+            <Card className="shadow-lg border-0 overflow-hidden">
                 <CardContent className="p-0">
                     {viewMode === 'standard' ? (
                         <div className="d-flex flex-column">
-                            {/* Income Section */}
+                            {/* Standard View Sections (Already separated) */}
                             <div className="p-4 p-md-5">
                                 <h5 className="fw-800 text-black mb-4 d-flex align-items-center gap-2">
                                     <TrendingUp className="text-success" size={20} />
@@ -143,7 +146,6 @@ const Reports: React.FC = () => {
                                 </div>
                             </div>
                             
-                            {/* Expenses Section */}
                             <div className="p-4 p-md-5 bg-subtle">
                                 <h5 className="fw-800 text-black mb-4 d-flex align-items-center gap-2">
                                     <TrendingDown className="text-danger" size={20} />
@@ -167,7 +169,6 @@ const Reports: React.FC = () => {
                                 </div>
                             </div>
                             
-                            {/* Net Income Section */}
                             <div className={`p-4 p-md-5 ${netIncome >= 0 ? 'bg-success bg-opacity-10' : 'bg-danger bg-opacity-10'}`}>
                                 <div className="d-flex justify-content-between align-items-center">
                                     <div className="d-flex align-items-center gap-3">
@@ -185,84 +186,100 @@ const Reports: React.FC = () => {
                         </div>
                     ) : (
                         <div className="table-responsive">
-                            <table className="table table-hover align-middle mb-0" style={{ minWidth: '1200px' }}>
+                            <table className="table align-middle mb-0 table-sticky-header" style={{ minWidth: '1200px' }}>
                                 <thead className="bg-light">
                                     <tr>
-                                        <th className="ps-4 py-3 sticky-column bg-light" style={{ width: '200px', position: 'sticky', left: 0, zIndex: 10 }}>
-                                            <span className="text-muted small fw-800 text-uppercase">Categories</span>
+                                        <th className="ps-4 py-3 sticky-column bg-light border-bottom" style={{ width: '280px' }}>
+                                            <span className="text-muted small fw-800 text-uppercase">Financial Structure</span>
                                         </th>
                                         {months.map(m => (
-                                            <th key={m} className="text-center py-3 text-muted small fw-800 text-uppercase">{m}</th>
+                                            <th key={m} className="text-center py-3 text-muted small fw-800 text-uppercase border-bottom">{m}</th>
                                         ))}
-                                        <th className="text-end py-3 pe-4 text-black small fw-800 text-uppercase">Total</th>
+                                        <th className="text-end py-3 pe-4 text-black small fw-800 text-uppercase border-bottom">Annual Total</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {/* Income Rows */}
-                                    <tr className="bg-light bg-opacity-50">
-                                        <td colSpan={14} className="ps-4 py-2 fw-800 text-success small">INCOME</td>
+                                    {/* --- INCOME SECTION --- */}
+                                    <tr className="bg-light border-bottom">
+                                        <td colSpan={14} className="ps-4 py-3 fw-800 text-success small sticky-column bg-light" style={{ letterSpacing: '0.05em' }}>
+                                            <div className="d-flex align-items-center gap-2">
+                                                <TrendingUp size={16} /> OPERATING REVENUE (INCOME)
+                                            </div>
+                                        </td>
                                     </tr>
                                     {incomeCategories.map(cat => {
                                         const monthly = getMonthlyData(cat);
                                         const total = monthly.reduce((a, b) => a + b, 0);
                                         if (total === 0) return null;
                                         return (
-                                            <tr key={cat.id}>
-                                                <td className="ps-4 py-3 fw-700 text-black sticky-column bg-white" style={{ position: 'sticky', left: 0, zIndex: 5 }}>{cat.name}</td>
+                                            <tr key={cat.id} className="border-bottom">
+                                                <td className="ps-5 py-3 fw-600 text-dark sticky-column bg-white">{cat.name}</td>
                                                 {monthly.map((val, idx) => (
-                                                    <td key={idx} className={`text-center small ${val > 0 ? 'text-success fw-600' : 'text-muted opacity-25'}`}>
+                                                    <td key={idx} className={`text-center small ${val > 0 ? 'text-dark fw-500' : 'text-muted opacity-25'}`}>
                                                         {val > 0 ? formatCurrency(val).replace('.00', '') : '-'}
                                                     </td>
                                                 ))}
-                                                <td className="text-end pe-4 fw-800 text-success">{formatCurrency(total)}</td>
+                                                <td className="text-end pe-4 fw-700 text-success">{formatCurrency(total)}</td>
                                             </tr>
                                         );
                                     })}
-                                    <tr className="table-success bg-opacity-10">
-                                        <td className="ps-4 py-3 fw-800 text-success sticky-column bg-success-subtle" style={{ position: 'sticky', left: 0, zIndex: 5 }}>Total Income</td>
+                                    <tr className="bg-success bg-opacity-10 border-bottom border-success border-opacity-25">
+                                        <td className="ps-4 py-3 fw-800 text-success sticky-column bg-success-subtle">Total Operating Revenue</td>
                                         {incomeMonthlyTotals.map((val, idx) => (
                                             <td key={idx} className="text-center fw-800 text-success small">{formatCurrency(val).replace('.00', '')}</td>
                                         ))}
                                         <td className="text-end pe-4 fw-900 text-success">{formatCurrency(totalIncome)}</td>
                                     </tr>
 
-                                    {/* Expense Rows */}
-                                    <tr className="bg-light bg-opacity-50">
-                                        <td colSpan={14} className="ps-4 py-2 fw-800 text-danger small">EXPENSES</td>
+                                    {/* --- SPACER --- */}
+                                    <tr style={{ height: '32px' }}><td colSpan={14} className="bg-white border-0 sticky-column"></td></tr>
+
+                                    {/* --- EXPENSE SECTION --- */}
+                                    <tr className="bg-light border-bottom">
+                                        <td colSpan={14} className="ps-4 py-3 fw-800 text-danger small sticky-column bg-light" style={{ letterSpacing: '0.05em' }}>
+                                            <div className="d-flex align-items-center gap-2">
+                                                <TrendingDown size={16} /> OPERATING EXPENSES
+                                            </div>
+                                        </td>
                                     </tr>
                                     {expenseCategories.map(cat => {
                                         const monthly = getMonthlyData(cat);
                                         const total = monthly.reduce((a, b) => a + b, 0);
                                         if (total === 0) return null;
                                         return (
-                                            <tr key={cat.id}>
-                                                <td className="ps-4 py-3 fw-700 text-black sticky-column bg-white" style={{ position: 'sticky', left: 0, zIndex: 5 }}>{cat.name}</td>
+                                            <tr key={cat.id} className="border-bottom">
+                                                <td className="ps-5 py-3 fw-600 text-dark sticky-column bg-white">{cat.name}</td>
                                                 {monthly.map((val, idx) => (
-                                                    <td key={idx} className={`text-center small ${val > 0 ? 'text-danger fw-600' : 'text-muted opacity-25'}`}>
+                                                    <td key={idx} className={`text-center small ${val > 0 ? 'text-dark fw-500' : 'text-muted opacity-25'}`}>
                                                         {val > 0 ? formatCurrency(val).replace('.00', '') : '-'}
                                                     </td>
                                                 ))}
-                                                <td className="text-end pe-4 fw-800 text-danger">{formatCurrency(total)}</td>
+                                                <td className="text-end pe-4 fw-700 text-danger">{formatCurrency(total)}</td>
                                             </tr>
                                         );
                                     })}
-                                    <tr className="table-danger bg-opacity-10">
-                                        <td className="ps-4 py-3 fw-800 text-danger sticky-column bg-danger-subtle" style={{ position: 'sticky', left: 0, zIndex: 5 }}>Total Expenses</td>
+                                    <tr className="bg-danger bg-opacity-10 border-bottom border-danger border-opacity-25">
+                                        <td className="ps-4 py-3 fw-800 text-danger sticky-column bg-danger-subtle">Total Operating Expenses</td>
                                         {expenseMonthlyTotals.map((val, idx) => (
                                             <td key={idx} className="text-center fw-800 text-danger small">{formatCurrency(val).replace('.00', '')}</td>
                                         ))}
                                         <td className="text-end pe-4 fw-900 text-danger">{formatCurrency(totalExpenses)}</td>
                                     </tr>
 
-                                    {/* Net Row */}
-                                    <tr className="border-top border-dark border-3">
-                                        <td className="ps-4 py-4 fw-900 text-black bg-white sticky-column" style={{ position: 'sticky', left: 0, zIndex: 5 }}>NET PROFIT / LOSS</td>
+                                    {/* --- SPACER --- */}
+                                    <tr style={{ height: '48px' }}><td colSpan={14} className="bg-white border-0 sticky-column"></td></tr>
+
+                                    {/* --- NET PERFORMANCE SECTION --- */}
+                                    <tr className="border-top border-dark border-3 bg-black bg-opacity-5">
+                                        <td className="ps-4 py-4 fw-900 text-black bg-white sticky-column" style={{ fontSize: '1.1rem' }}>
+                                            NET PROFIT / LOSS
+                                        </td>
                                         {netMonthlyTotals.map((val, idx) => (
-                                            <td key={idx} className={`text-center fw-900 ${val >= 0 ? 'text-success' : 'text-danger'}`}>
+                                            <td key={idx} className={`text-center fw-900 border-top ${val >= 0 ? 'text-success' : 'text-danger'}`} style={{ fontSize: '1rem' }}>
                                                 {formatCurrency(val).replace('.00', '')}
                                             </td>
                                         ))}
-                                        <td className={`text-end pe-4 fw-900 fs-5 ${netIncome >= 0 ? 'text-success' : 'text-danger'}`}>
+                                        <td className={`text-end pe-4 fw-900 border-top ${netIncome >= 0 ? 'text-success' : 'text-danger'}`} style={{ fontSize: '1.25rem' }}>
                                             {formatCurrency(netIncome)}
                                         </td>
                                     </tr>
