@@ -52,7 +52,7 @@ const Header: React.FC<HeaderProps> = ({ title, icon: Icon, onMenuClick, setActi
 
           <button className="btn btn-white border-0 position-relative p-2"><Bell size={20} /><span className="position-absolute top-0 start-100 translate-middle p-1 bg-danger border border-white rounded-circle"></span></button>
           <button 
-            className={`btn btn-white border-0 p-2 d-none d-sm-block ${title === 'Settings' ? 'text-primary bg-subtle' : ''}`}
+            className={`btn btn-white border-0 p-2 ${title === 'Settings' ? 'text-primary bg-subtle' : ''}`}
             onClick={() => setActivePage('Settings')}
             title="System Settings"
           >
