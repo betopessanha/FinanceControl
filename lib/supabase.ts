@@ -17,7 +17,7 @@ export const isKeyCorrectFormat = (key: string) => key.startsWith('eyJ');
 
 // Strictness relaxed: If user entered SOMETHING that looks like a URL and a long key, try it.
 const isUrlValid = rawUrl && rawUrl.startsWith('https://') && rawUrl.includes('.supabase.co');
-const isKeyValid = rawKey && rawKey.length > 20; // Just check length to let it try
+const isKeyValid = rawKey && rawKey.length > 20;
 
 export const isSupabaseConfigured = !!(isUrlValid && isKeyValid);
 
@@ -41,3 +41,12 @@ export const clearConnectionSettings = () => {
 export const supabase = isSupabaseConfigured 
     ? createClient(rawUrl, rawKey) 
     : null;
+
+/**
+ * Checks if there is an active session in Supabase Auth
+ */
+export const hasActiveSupabaseSession = async (): Promise<boolean> => {
+    if (!supabase) return false;
+    const { data: { session } } = await supabase.auth.getSession();
+    return !!session;
+};

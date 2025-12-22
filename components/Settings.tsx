@@ -1,105 +1,65 @@
 
 import React, { useState, useEffect } from 'react';
 import Card, { CardHeader, CardTitle, CardContent } from './ui/Card';
-import { Clock, Save, CheckCircle2, LogOut, Database, Lock, Unlock, Server, ShieldAlert, Eye, EyeOff, Loader2, Code, Copy, Check, Info, AlertTriangle, UserCircle, ShieldCheck, RefreshCw } from 'lucide-react';
+import { Database, Lock, Loader2, Code, Copy, Check, AlertTriangle, UserCircle, LogOut, RefreshCw, Trash2, Activity, ShieldCheck, ShieldAlert, Settings as SettingsIcon, CloudUpload } from 'lucide-react';
 import { useAuth } from '../lib/AuthContext';
-import { saveConnectionSettings, clearConnectionSettings, isSupabaseConfigured, isKeyLikelyStripe, isKeyCorrectFormat } from '../lib/supabase';
+import { saveConnectionSettings, clearConnectionSettings, isSupabaseConfigured } from '../lib/supabase';
 import { useData } from '../lib/DataContext';
 import Modal from './ui/Modal';
 
 const Settings: React.FC = () => {
-    const { user, signIn, signOut, updateLocalCredentials } = useAuth();
-    const { saveSystemSetting } = useData();
+    const { user, signIn, signOut } = useAuth();
+    const { isCloudConnected, refreshData, loadRecords, transactions, trucks, accounts, pushLocalDataToCloud } = useData();
     
-    const [timeoutMinutes, setTimeoutMinutes] = useState('15');
-    const [saved, setSaved] = useState(false);
-    const [isSaving, setIsSaving] = useState(false);
-
-    // DB Settings
     const [isDbLocked, setIsDbLocked] = useState(true);
     const [unlockPassword, setUnlockPassword] = useState('');
     const [isVerifying, setIsVerifying] = useState(false);
+    const [isSyncing, setIsSyncing] = useState(false);
+    const [syncResult, setSyncResult] = useState<{success: boolean, message: string} | null>(null);
     const [dbUrl, setDbUrl] = useState('');
     const [dbKey, setDbKey] = useState('');
-    const [showKey, setShowKey] = useState(false);
     const [dbError, setDbError] = useState<string | null>(null);
     const [showSchema, setShowSchema] = useState(false);
     const [copied, setCopied] = useState(false);
 
-    // Local Auth Settings
-    const [localUser, setLocalUser] = useState(user?.email || '');
-    const [localPass, setLocalPass] = useState('');
-    const [isUpdatingAuth, setIsUpdatingAuth] = useState(false);
-    const [authSuccess, setAuthSuccess] = useState(false);
-
     useEffect(() => {
-        const storedTimeout = localStorage.getItem('custom_session_timeout');
-        if (storedTimeout) setTimeoutMinutes(storedTimeout);
-        const storedUrl = localStorage.getItem('custom_supabase_url');
-        const storedKey = localStorage.getItem('custom_supabase_key');
-        if (storedUrl) setDbUrl(storedUrl);
-        if (storedKey) setDbKey(storedKey);
+        setDbUrl(localStorage.getItem('custom_supabase_url') || '');
+        setDbKey(localStorage.getItem('custom_supabase_key') || '');
     }, []);
-
-    const handleSaveAppConfig = async (e: React.FormEvent) => {
-        e.preventDefault();
-        setIsSaving(true);
-        if (timeoutMinutes) {
-            await saveSystemSetting('custom_session_timeout', timeoutMinutes);
-        }
-        setSaved(true);
-        setIsSaving(false);
-        setTimeout(() => setSaved(false), 2000);
-    };
-
-    const handleUpdateLocalAuth = (e: React.FormEvent) => {
-        e.preventDefault();
-        setIsUpdatingAuth(true);
-        updateLocalCredentials(localUser, localPass);
-        setAuthSuccess(true);
-        setIsUpdatingAuth(false);
-        setLocalPass('');
-        setTimeout(() => setAuthSuccess(false), 3000);
-    };
 
     const handleUnlockDbSettings = async (e: React.FormEvent) => {
         e.preventDefault();
         setIsVerifying(true);
-        setDbError(null);
-        if (user && user.email) {
-            const result = await signIn(user.email, unlockPassword);
-            if (result.error) {
-                setDbError("Incorrect password.");
-                setIsVerifying(false);
-            } else {
-                setIsDbLocked(false);
-                setIsVerifying(false);
-                setUnlockPassword('');
-            }
-        } else {
-            setDbError("User session not found.");
-            setIsVerifying(false);
-        }
+        const res = await signIn(user?.email || 'admin', unlockPassword);
+        if (res.error) setDbError("Incorrect password.");
+        else setIsDbLocked(false);
+        setIsVerifying(false);
     };
 
-    const handleSaveDatabase = (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!dbUrl.startsWith('http')) { alert("Invalid URL."); return; }
-        if (dbKey.length < 20) { alert("Invalid Key."); return; }
-        saveConnectionSettings(dbUrl, dbKey);
+    const handlePushToCloud = async () => {
+        if (!confirm("Isso enviará todos os seus dados locais (Caminhões, Contas, Transações) para a nuvem. Deseja continuar?")) return;
+        setIsSyncing(true);
+        setSyncResult(null);
+        const res = await pushLocalDataToCloud();
+        setSyncResult(res);
+        setIsSyncing(false);
     };
 
-    const handleDisconnectDatabase = () => {
-        if(window.confirm("Are you sure? This will disconnect your Cloud Database.")) clearConnectionSettings();
-    }
+    const schemaSQL = `-- TRUCKING.IO - NUCLEAR RESET (v12)
+-- AVISO: Isso apagará todos os dados existentes no Supabase para garantir estrutura limpa.
 
-    const schemaSQL = `-- SUPABASE SQL SETUP
--- Run this in your Supabase SQL Editor to enable the required tables and security.
+-- 1. Limpeza Total
+DROP TABLE IF EXISTS public.transactions CASCADE;
+DROP TABLE IF EXISTS public.loads CASCADE;
+DROP TABLE IF EXISTS public.bank_accounts CASCADE;
+DROP TABLE IF EXISTS public.business_entities CASCADE;
+DROP TABLE IF EXISTS public.trucks CASCADE;
+DROP TABLE IF EXISTS public.categories CASCADE;
 
--- 1. Create Tables with UUID support and user ownership
-CREATE TABLE IF NOT EXISTS business_entities (
+-- 2. Recriação das Tabelas
+CREATE TABLE public.business_entities (
     id UUID PRIMARY KEY,
-    user_id UUID REFERENCES auth.users(id) DEFAULT auth.uid(),
+    user_id UUID NOT NULL DEFAULT auth.uid(),
     name TEXT NOT NULL,
     structure TEXT,
     tax_form TEXT,
@@ -111,281 +71,259 @@ CREATE TABLE IF NOT EXISTS business_entities (
     city TEXT,
     state TEXT,
     zip TEXT,
-    logo_url TEXT,
-    created_at TIMESTAMPTZ DEFAULT NOW()
+    created_at TIMESTAMPTZ DEFAULT now()
 );
 
-CREATE TABLE IF NOT EXISTS bank_accounts (
+CREATE TABLE public.categories (
     id UUID PRIMARY KEY,
-    user_id UUID REFERENCES auth.users(id) DEFAULT auth.uid(),
-    business_entity_id UUID REFERENCES business_entities(id),
+    user_id UUID NOT NULL DEFAULT auth.uid(),
     name TEXT NOT NULL,
-    type TEXT,
-    initial_balance DECIMAL(15,2) DEFAULT 0,
-    created_at TIMESTAMPTZ DEFAULT NOW()
+    type TEXT NOT NULL,
+    is_tax_deductible BOOLEAN DEFAULT true,
+    created_at TIMESTAMPTZ DEFAULT now()
 );
 
-CREATE TABLE IF NOT EXISTS trucks (
+CREATE TABLE public.trucks (
     id UUID PRIMARY KEY,
-    user_id UUID REFERENCES auth.users(id) DEFAULT auth.uid(),
+    user_id UUID NOT NULL DEFAULT auth.uid(),
     unit_number TEXT NOT NULL,
     make TEXT,
     model TEXT,
     year INTEGER,
-    created_at TIMESTAMPTZ DEFAULT NOW()
+    created_at TIMESTAMPTZ DEFAULT now()
 );
 
-CREATE TABLE IF NOT EXISTS categories (
+CREATE TABLE public.bank_accounts (
     id UUID PRIMARY KEY,
-    user_id UUID REFERENCES auth.users(id) DEFAULT auth.uid(),
+    user_id UUID NOT NULL DEFAULT auth.uid(),
+    business_entity_id UUID REFERENCES public.business_entities(id) ON DELETE SET NULL,
     name TEXT NOT NULL,
     type TEXT,
-    is_tax_deductible BOOLEAN DEFAULT true,
-    created_at TIMESTAMPTZ DEFAULT NOW()
+    initial_balance DECIMAL(15,2) DEFAULT 0,
+    created_at TIMESTAMPTZ DEFAULT now()
 );
 
-CREATE TABLE IF NOT EXISTS loads (
+CREATE TABLE public.transactions (
     id UUID PRIMARY KEY,
-    user_id UUID REFERENCES auth.users(id) DEFAULT auth.uid(),
-    truck_id UUID REFERENCES trucks(id),
+    user_id UUID NOT NULL DEFAULT auth.uid(),
+    account_id UUID REFERENCES public.bank_accounts(id) ON DELETE CASCADE,
+    category_id UUID REFERENCES public.categories(id) ON DELETE SET NULL,
+    truck_id UUID REFERENCES public.trucks(id) ON DELETE SET NULL,
+    date DATE NOT NULL DEFAULT CURRENT_DATE,
+    description TEXT NOT NULL,
+    amount DECIMAL(15,2) NOT NULL DEFAULT 0,
+    type TEXT NOT NULL,
+    to_account_id UUID REFERENCES public.bank_accounts(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE TABLE public.loads (
+    id UUID PRIMARY KEY,
+    user_id UUID NOT NULL DEFAULT auth.uid(),
+    truck_id UUID REFERENCES public.trucks(id) ON DELETE SET NULL,
     current_location TEXT,
     pickup_location TEXT,
-    delivery_location TEXT,
-    miles_to_pickup DECIMAL(10,2) DEFAULT 0,
-    miles_to_delivery DECIMAL(10,2) DEFAULT 0,
     pickup_date DATE,
+    delivery_location TEXT,
     delivery_date DATE,
+    miles_to_pickup DECIMAL(15,2) DEFAULT 0,
+    miles_to_delivery DECIMAL(15,2) DEFAULT 0,
+    total_miles DECIMAL(15,2) DEFAULT 0,
     payment_type TEXT,
     rate DECIMAL(15,2) DEFAULT 0,
     total_revenue DECIMAL(15,2) DEFAULT 0,
     status TEXT DEFAULT 'Planned',
-    created_at TIMESTAMPTZ DEFAULT NOW()
+    created_at TIMESTAMPTZ DEFAULT now()
 );
 
-CREATE TABLE IF NOT EXISTS transactions (
-    id UUID PRIMARY KEY,
-    user_id UUID REFERENCES auth.users(id) DEFAULT auth.uid(),
-    account_id UUID REFERENCES bank_accounts(id),
-    category_id UUID REFERENCES categories(id),
-    truck_id UUID REFERENCES trucks(id),
-    to_account_id UUID REFERENCES bank_accounts(id),
-    date DATE NOT NULL,
-    description TEXT,
-    amount DECIMAL(15,2) NOT NULL,
-    type TEXT,
-    created_at TIMESTAMPTZ DEFAULT NOW()
-);
+-- 3. Habilitar RLS
+ALTER TABLE public.business_entities ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.categories ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.trucks ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.bank_accounts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.transactions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.loads ENABLE ROW LEVEL SECURITY;
 
--- 2. ENABLE RLS (MANDATORY TO FIX 42501 ERROR)
-ALTER TABLE business_entities ENABLE ROW LEVEL SECURITY;
-ALTER TABLE bank_accounts ENABLE ROW LEVEL SECURITY;
-ALTER TABLE trucks ENABLE ROW LEVEL SECURITY;
-ALTER TABLE categories ENABLE ROW LEVEL SECURITY;
-ALTER TABLE loads ENABLE ROW LEVEL SECURITY;
-ALTER TABLE transactions ENABLE ROW LEVEL SECURITY;
+-- 4. Políticas de Acesso Total
+DO $$ 
+DECLARE
+    t text;
+BEGIN
+    FOR t IN SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name IN ('business_entities', 'categories', 'trucks', 'bank_accounts', 'transactions', 'loads')
+    LOOP
+        EXECUTE format('CREATE POLICY "FullAccess" ON public.%I FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id)', t);
+    END LOOP;
+END $$;
 
--- 3. CREATE POLICIES (Allow authenticated users to manage their OWN data)
--- Use this pattern for all tables:
-CREATE POLICY "Manage own loads" ON loads FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
-CREATE POLICY "Manage own business_entities" ON business_entities FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
-CREATE POLICY "Manage own bank_accounts" ON bank_accounts FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
-CREATE POLICY "Manage own trucks" ON trucks FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
-CREATE POLICY "Manage own categories" ON categories FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
-CREATE POLICY "Manage own transactions" ON transactions FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);`;
+-- 5. Trigger de UserID
+CREATE OR REPLACE FUNCTION public.set_user_id() RETURNS TRIGGER AS $$
+BEGIN
+  NEW.user_id := auth.uid();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 
-    const handleCopySQL = () => {
-        navigator.clipboard.writeText(schemaSQL);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-    };
+DO $$ 
+DECLARE
+    t text;
+BEGIN
+    FOR t IN SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name IN ('business_entities', 'categories', 'trucks', 'bank_accounts', 'transactions', 'loads')
+    LOOP
+        EXECUTE format('CREATE TRIGGER tr_set_uid BEFORE INSERT ON public.%I FOR EACH ROW EXECUTE FUNCTION set_user_id()', t);
+    END LOOP;
+END $$;
+
+GRANT ALL ON ALL TABLES IN SCHEMA public TO authenticated;
+GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO authenticated;`;
 
     return (
-        <div className="mb-5" style={{ maxWidth: '1000px' }}>
-            <div className="d-flex flex-column flex-md-row align-items-md-end justify-content-between gap-3 mb-4">
+        <div className="container py-4 animate-slide-up">
+            <div className="d-flex align-items-center gap-3 mb-4">
+                <SettingsIcon className="text-primary" size={32} />
                 <div>
-                  <h2 className="fw-bold text-dark mb-1">Settings</h2>
-                  <p className="text-muted mb-0">Control your system security, session and cloud bridge.</p>
+                    <h2 className="fw-bold mb-0">System Settings</h2>
+                    <p className="text-muted mb-0">Cloud management and data integrity.</p>
                 </div>
             </div>
 
             <div className="row g-4">
                 <div className="col-lg-7">
-                    {/* Database Section */}
-                    <Card className="mb-4 border-primary border-opacity-25 shadow-sm overflow-hidden">
-                        <CardHeader className="bg-primary bg-opacity-10 border-bottom-0 py-3 px-4">
+                    <Card className="mb-4 border-0 shadow-sm overflow-hidden">
+                        <CardHeader className="bg-dark text-white py-3">
                             <div className="d-flex align-items-center justify-content-between w-100">
-                                <div className="d-flex align-items-center">
-                                    <Database className="me-2 text-primary" size={20} />
-                                    <CardTitle>Cloud Connection Bridge</CardTitle>
+                                <div className="d-flex align-items-center gap-2">
+                                    <Activity size={20} className="text-success" />
+                                    <CardTitle className="text-white">Integrity Monitor</CardTitle>
                                 </div>
-                                {!isDbLocked && (
-                                    <button onClick={() => setShowSchema(true)} className="btn btn-sm btn-primary d-flex align-items-center shadow-sm">
-                                        <Code size={14} className="me-1"/> SQL Editor
-                                    </button>
-                                )}
+                                <button onClick={handlePushToCloud} disabled={isSyncing || !isCloudConnected} className="btn btn-sm btn-primary d-flex align-items-center gap-2 px-3 shadow">
+                                    {isSyncing ? <Loader2 size={14} className="animate-spin"/> : <CloudUpload size={14}/>}
+                                    Push Local Data to Cloud
+                                </button>
                             </div>
                         </CardHeader>
-                        <CardContent className="pt-4 px-4">
+                        <CardContent className="p-4 bg-light bg-opacity-50">
+                            {syncResult && (
+                                <div className={`alert ${syncResult.success ? 'alert-success' : 'alert-danger'} small mb-3 border-0 shadow-sm`}>
+                                    {syncResult.success ? <Check size={16} className="me-2"/> : <AlertTriangle size={16} className="me-2"/>}
+                                    {syncResult.message}
+                                </div>
+                            )}
+                            <div className="row g-3">
+                                <div className="col-6">
+                                    <div className="p-3 bg-white rounded-3 border shadow-sm h-100">
+                                        <small className="text-muted d-block fw-bold text-uppercase" style={{fontSize: '0.6rem'}}>Local Browser Items</small>
+                                        <div className="d-flex align-items-baseline gap-2 mt-2">
+                                            <h2 className="fw-900 mb-0">{loadRecords.length + transactions.length + trucks.length}</h2>
+                                            <span className="text-success small fw-bold"><ShieldCheck size={14}/> Safe</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="col-6">
+                                    <div className="p-3 bg-white rounded-3 border shadow-sm h-100">
+                                        <small className="text-muted d-block fw-bold text-uppercase" style={{fontSize: '0.6rem'}}>Cloud Sync Status</small>
+                                        <div className="d-flex align-items-baseline gap-2 mt-2">
+                                            <h2 className={`fw-900 mb-0 ${isCloudConnected ? 'text-primary' : 'text-warning'}`}>{isCloudConnected ? 'Connected' : 'Offline'}</h2>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="mt-3 p-3 bg-primary bg-opacity-10 rounded-3 border border-primary border-opacity-25 d-flex align-items-start gap-3">
+                                <ShieldCheck className="text-primary mt-1" size={20} />
+                                <div className="small">
+                                    <strong>Offline-First Active:</strong> Data is safe in browser storage. Se o seu banco estiver vazio, use o botão <strong>Push</strong> acima para enviar seus dados locais para a nuvem.
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    <Card className="shadow-sm border-0">
+                        <CardHeader className="py-3 border-bottom">
+                            <div className="d-flex align-items-center justify-content-between w-100">
+                                <div className="d-flex align-items-center"><Database className="text-primary me-2" size={20}/><CardTitle>Cloud Configuration</CardTitle></div>
+                                {!isDbLocked && <button onClick={() => setShowSchema(true)} className="btn btn-sm btn-danger px-3 shadow-sm d-flex align-items-center gap-2"><Code size={16}/> NUCLEAR RESET SQL</button>}
+                            </div>
+                        </CardHeader>
+                        <CardContent className="p-4">
                             {isDbLocked ? (
                                 <div className="text-center py-4">
-                                    <div className="bg-light rounded-circle d-inline-flex p-3 mb-3">
-                                        <Lock size={32} className="text-muted opacity-50" />
-                                    </div>
-                                    <h6 className="fw-bold text-dark mb-1">Connection Settings Locked</h6>
-                                    <p className="text-muted small mb-4">Enter your login password to modify database settings.</p>
-                                    
-                                    <form onSubmit={handleUnlockDbSettings} className="d-inline-block text-start w-100" style={{maxWidth: '320px'}}>
-                                        <div className="input-group mb-2 shadow-sm border rounded">
-                                            <input type="password"  className="form-control border-0" placeholder="Verification Password" value={unlockPassword} onChange={(e) => setUnlockPassword(e.target.value)} required />
-                                            <button className="btn btn-primary px-4" type="submit" disabled={isVerifying}>
-                                                {isVerifying ? <Loader2 size={16} className="animate-spin" /> : 'Unlock'}
-                                            </button>
+                                    <h6 className="fw-bold">Security Lock</h6>
+                                    <p className="text-muted small mb-4">Confirm password to edit DB settings.</p>
+                                    <form onSubmit={handleUnlockDbSettings} className="mt-3 mx-auto" style={{maxWidth: '300px'}}>
+                                        <div className="input-group mb-2">
+                                            <input type="password"  className="form-control" placeholder="App Password" value={unlockPassword} onChange={(e) => setUnlockPassword(e.target.value)} required />
+                                            <button className="btn btn-primary px-4" type="submit" disabled={isVerifying}>{isVerifying ? <Loader2 className="animate-spin" size={16}/> : 'Unlock'}</button>
                                         </div>
-                                        {dbError && <div className="text-danger small fw-bold mt-2 text-center"><ShieldAlert size={14} className="me-1"/> {dbError}</div>}
+                                        {dbError && <div className="text-danger small mt-2 fw-bold">{dbError}</div>}
                                     </form>
                                 </div>
                             ) : (
-                                <form onSubmit={handleSaveDatabase}>
-                                    <div className="alert alert-success d-flex align-items-center small mb-4 py-2 bg-opacity-10 border-success border-opacity-25">
-                                        <Unlock size={16} className="me-2 text-success" />
-                                        <div className="fw-bold text-success">Identity Verified: Bridge Unlocked</div>
-                                    </div>
-                                    
+                                <form onSubmit={(e) => { e.preventDefault(); saveConnectionSettings(dbUrl, dbKey); }}>
                                     <div className="mb-3">
-                                        <label className="form-label fw-bold small text-muted">Supabase Project URL</label>
-                                        <input type="url" className="form-control bg-light" value={dbUrl} onChange={(e) => setDbUrl(e.target.value)} placeholder="https://..." required />
+                                        <label className="form-label small fw-bold text-muted">SUPABASE PROJECT URL</label>
+                                        <input type="text" className="form-control bg-light" value={dbUrl} onChange={e => setDbUrl(e.target.value)} placeholder="https://..." />
                                     </div>
                                     <div className="mb-4">
-                                        <label className="form-label fw-bold small text-muted">Anon API Key</label>
-                                        <div className="input-group">
-                                            <input type={showKey ? "text" : "password"} className={`form-control bg-light ${dbKey && !isKeyCorrectFormat(dbKey) ? 'border-warning' : ''}`} value={dbKey} onChange={(e) => setDbKey(e.target.value)} required placeholder="eyJ..." />
-                                            <button type="button" className="btn btn-light border" onClick={() => setShowKey(!showKey)}>
-                                                {showKey ? <EyeOff size={16}/> : <Eye size={16}/>}
-                                            </button>
-                                        </div>
+                                        <label className="form-label small fw-bold text-muted">ANON API KEY</label>
+                                        <input type="password"  className="form-control bg-light" value={dbKey} onChange={e => setDbKey(e.target.value)} placeholder="eyJ..." />
                                     </div>
-
-                                    <div className="d-flex justify-content-between align-items-center border-top pt-3">
-                                        <button type="button" onClick={handleDisconnectDatabase} className="btn btn-outline-danger btn-sm">Disconnect Cloud</button>
+                                    <div className="d-flex justify-content-between pt-3 border-top">
+                                        <button type="button" onClick={clearConnectionSettings} className="btn btn-outline-danger btn-sm px-3">Clear Settings</button>
                                         <div className="d-flex gap-2">
-                                            <button type="button" onClick={() => setIsDbLocked(true)} className="btn btn-light border btn-sm">Re-lock</button>
-                                            <button type="submit" className="btn btn-primary btn-sm px-3">Save & Sync</button>
+                                            <button type="button" onClick={() => setIsDbLocked(true)} className="btn btn-light btn-sm px-3 border">Lock</button>
+                                            <button type="submit" className="btn btn-primary btn-sm px-4 shadow-sm">Save & Sync</button>
                                         </div>
                                     </div>
                                 </form>
                             )}
                         </CardContent>
                     </Card>
-
-                    {/* App Settings */}
-                    <Card>
-                        <CardHeader className="px-4 pt-4"><div className="d-flex align-items-center"><Clock className="me-2 text-primary" size={20} /><CardTitle>Session Control</CardTitle></div></CardHeader>
-                        <CardContent className="px-4">
-                            <form onSubmit={handleSaveAppConfig}>
-                                <div className="mb-3">
-                                    <label className="form-label fw-bold small text-muted">Auto-logout Inactivity Timeout</label>
-                                    <div className="input-group" style={{ maxWidth: '200px' }}>
-                                        <input type="number" className="form-control" value={timeoutMinutes} onChange={(e) => setTimeoutMinutes(e.target.value)} min="1" max="1440" required />
-                                        <span className="input-group-text bg-light border">min</span>
-                                    </div>
-                                    <div className="form-text small">Session expires after inactivity. Setting this too high may reduce security.</div>
-                                </div>
-                                <div className="d-flex align-items-center gap-3 mt-4">
-                                    <button type="submit" className="btn btn-primary d-flex align-items-center px-4" disabled={isSaving}>
-                                        {isSaving ? <Loader2 size={18} className="me-2 animate-spin"/> : <Save size={18} className="me-2" />}
-                                        Save Session Config
-                                    </button>
-                                    {saved && <span className="text-success small fw-bold"><CheckCircle2 size={18} className="me-1" /> Config Updated</span>}
-                                </div>
-                            </form>
-                        </CardContent>
-                    </Card>
                 </div>
 
                 <div className="col-lg-5">
-                    {/* Local User Management */}
-                    <Card className="mb-4">
-                        <CardHeader className="px-4 pt-4">
-                            <div className="d-flex align-items-center">
-                                <ShieldCheck className="me-2 text-primary" size={20} />
-                                <CardTitle>Local Account Security</CardTitle>
+                    <Card className="h-100 bg-white border-0 shadow-sm">
+                        <CardContent className="p-4 text-center">
+                            <div className="bg-light rounded-circle d-inline-flex p-4 mb-3 border"><UserCircle size={64} className="text-primary"/></div>
+                            <h4 className="fw-bold mb-1">{user?.email || 'Guest User'}</h4>
+                            <div className={`badge ${isCloudConnected ? 'bg-success' : 'bg-warning'} rounded-pill px-3 py-2 mt-2 mb-4 shadow-sm`}>
+                                {isCloudConnected ? 'Cloud Real-time Engine' : 'Offline Engine Active'}
                             </div>
-                        </CardHeader>
-                        <CardContent className="px-4">
-                            <div className="alert alert-secondary bg-opacity-10 border-0 small py-2 mb-4">
-                                <Info size={14} className="me-2"/> You can define your own user and password for Local Mode access.
-                            </div>
-                            <form onSubmit={handleUpdateLocalAuth}>
-                                <div className="mb-3">
-                                    <label className="form-label fw-bold small text-muted">User Name / Email</label>
-                                    <input type="text" className="form-control" value={localUser} onChange={e => setLocalUser(e.target.value)} required />
-                                </div>
-                                <div className="mb-4">
-                                    <label className="form-label fw-bold small text-muted">New Password</label>
-                                    <input type="password" placeholder="••••••••" className="form-control" value={localPass} onChange={e => setLocalPass(e.target.value)} required />
-                                </div>
-                                <button type="submit" className="btn btn-dark w-100 d-flex align-items-center justify-content-center gap-2" disabled={isUpdatingAuth}>
-                                    {isUpdatingAuth ? <Loader2 size={18} className="animate-spin" /> : <RefreshCw size={18} />}
-                                    Update Local Credentials
+                            
+                            <div className="d-grid gap-2 mt-2">
+                                <button onClick={refreshData} className="btn btn-outline-dark d-flex align-items-center justify-content-center gap-2 py-2">
+                                    <RefreshCw size={18} /> Refresh Data
                                 </button>
-                                {authSuccess && <div className="text-success small fw-bold mt-2 text-center animate-pulse"><CheckCircle2 size={14} /> Credentials updated successfully!</div>}
-                            </form>
-                        </CardContent>
-                    </Card>
-
-                    {/* Current Profile Card */}
-                    <Card className="bg-primary bg-opacity-10 border-0 shadow-sm">
-                        <CardContent className="p-4">
-                            <div className="text-center mb-3">
-                                <div className="bg-white rounded-circle d-inline-flex p-3 mb-2 shadow-sm border border-primary border-opacity-25">
-                                    <UserCircle size={48} className="text-primary" />
-                                </div>
-                                <h5 className="fw-bold text-dark mb-0">{user?.email || 'Active User'}</h5>
-                                <span className="badge bg-primary rounded-pill small">{user?.role?.toUpperCase()}</span>
+                                <button onClick={() => { if(confirm("Clear local cache? This won't delete cloud data.")) { localStorage.clear(); window.location.reload(); }}} className="btn btn-link text-danger small mt-2">
+                                    <Trash2 size={14} className="me-1" /> Clear Local Cache
+                                </button>
                             </div>
-                            <hr className="opacity-10" />
-                            <div className="small mb-3">
-                                <div className="d-flex justify-content-between mb-1">
-                                    <span className="text-muted">Status:</span>
-                                    <span className="text-success fw-bold">Active Session</span>
-                                </div>
-                                <div className="d-flex justify-content-between mb-1">
-                                    <span className="text-muted">Environment:</span>
-                                    <span className="text-dark fw-bold">{isSupabaseConfigured ? 'Cloud Bridge' : 'Local Instance'}</span>
-                                </div>
-                            </div>
-                            <button onClick={() => signOut()} className="btn btn-outline-danger w-100 d-flex align-items-center justify-content-center gap-2">
-                                <LogOut size={16} /> End Current Session
+                            <hr className="my-4 opacity-5" />
+                            <button onClick={() => signOut()} className="btn btn-outline-danger w-100 py-2 rounded-3">
+                                <LogOut size={18} className="me-2" /> Sign Out
                             </button>
                         </CardContent>
                     </Card>
                 </div>
             </div>
 
-            {/* SQL Schema Modal */}
-            <Modal isOpen={showSchema} onClose={() => setShowSchema(false)} title="SQL Schema & RLS Setup" size="lg">
-                <div className="p-2">
-                    <div className="alert alert-warning small d-flex align-items-start mb-4">
-                        <AlertTriangle size={18} className="me-2 mt-1 flex-shrink-0" />
-                        <div>
-                            <strong>Action Required:</strong> To fix the "42501 - Row Level Security" error, you must copy the code below and run it in your <strong>Supabase SQL Editor</strong>. This will enable proper ownership tracking using <code>user_id</code>.
-                        </div>
+            <Modal isOpen={showSchema} onClose={() => setShowSchema(false)} title="NUCLEAR RESET SQL (v12)" size="lg">
+                <div className="alert alert-danger small mb-3 shadow-sm border-0 d-flex align-items-start">
+                    <AlertTriangle size={24} className="me-3 mt-1 flex-shrink-0" />
+                    <div>
+                        <h6 className="fw-bold mb-1">CUIDADO: ESTE SCRIPT APAGA TUDO</h6>
+                        Para que o cadastro funcione, o Supabase precisa de uma estrutura limpa e do cache atualizado.
+                        <ol className="ps-3 mt-2 mb-0">
+                            <li>Copie o script v12 abaixo.</li>
+                            <li>No Supabase, vá em <strong>SQL Editor</strong> e rode o script.</li>
+                            <li><strong>PASSO CRÍTICO:</strong> Vá em <strong>Settings > API > PostgREST</strong> e clique no botão <strong>'Reload Schema Cache'</strong>. Sem isso, o Supabase continuará achando que as tabelas são as antigas.</li>
+                        </ol>
                     </div>
-                    <div className="position-relative bg-dark rounded-4 overflow-hidden">
-                        <pre className="p-4 text-light small overflow-auto" style={{ maxHeight: '400px' }}>
-                            <code>{schemaSQL}</code>
-                        </pre>
-                        <button 
-                            className="btn btn-sm btn-white position-absolute top-0 end-0 m-3 d-flex align-items-center gap-2 shadow"
-                            onClick={handleCopySQL}
-                        >
-                            {copied ? <Check size={14} className="text-success" /> : <Copy size={14} />}
-                            {copied ? 'Copied!' : 'Copy SQL'}
-                        </button>
-                    </div>
-                    <div className="mt-4 pt-3 border-top text-end">
-                        <button className="btn btn-black px-4 rounded-3" onClick={() => setShowSchema(false)}>Close Editor</button>
-                    </div>
+                </div>
+                <div className="position-relative bg-dark rounded p-3">
+                    <pre className="text-white small mb-0 p-2" style={{maxHeight: '400px', overflow: 'auto', fontFamily: 'monospace'}}>{schemaSQL}</pre>
+                    <button className="btn btn-sm btn-white position-absolute top-0 end-0 m-3 d-flex align-items-center gap-2 shadow" onClick={() => { navigator.clipboard.writeText(schemaSQL); setCopied(true); setTimeout(() => setCopied(false), 2000); }}>
+                        {copied ? <Check size={14} className="text-success" /> : <Copy size={14}/>}
+                        {copied ? 'Copied!' : 'Copy Script'}
+                    </button>
                 </div>
             </Modal>
         </div>

@@ -22,7 +22,8 @@ const NavItem: React.FC<{
     Tax: 'Tax Hub',
     Users: 'Team Members',
     Settings: 'Settings',
-    Loads: 'Logistics'
+    Loads: 'Logistics',
+    Categories: 'Categories'
   };
   
   const displayLabel = displayLabels[label] || label;
@@ -98,8 +99,20 @@ const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage, isOpen, se
 
             <div className="px-4 mb-3"><small className="text-uppercase fw-800 text-muted" style={{fontSize: '0.65rem', letterSpacing: '0.1em'}}>System</small></div>
             <ul className="nav flex-column">
-              {['Tax', 'FiscalYears', 'Users', 'Settings'].map((item) => (
-                <NavItem key={item} icon={item === 'Tax' ? Landmark : item === 'FiscalYears' ? CalendarRange : item === 'Users' ? Users : SettingsIcon} label={item as Page} isActive={activePage === item} onClick={() => handleNavigation(item as Page)} />
+              {['Tax', 'FiscalYears', 'Categories', 'Users', 'Settings'].map((item) => (
+                <NavItem 
+                    key={item} 
+                    icon={
+                        item === 'Tax' ? Landmark : 
+                        item === 'FiscalYears' ? CalendarRange : 
+                        item === 'Categories' ? Tags : 
+                        item === 'Users' ? Users : 
+                        SettingsIcon
+                    } 
+                    label={item as Page} 
+                    isActive={activePage === item} 
+                    onClick={() => handleNavigation(item as Page)} 
+                />
               ))}
             </ul>
         </div>
