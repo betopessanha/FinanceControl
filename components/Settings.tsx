@@ -342,7 +342,7 @@ GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO authenticated;`;
                         <ol className="ps-3 mt-2 mb-0">
                             <li>Copie o script v15 abaixo (corrigido para Seeding).</li>
                             <li>No Supabase, vá em <strong>SQL Editor</strong> e rode o script.</li>
-                            <li><strong>PASSO CRÍTICO:</strong> Vá em <strong>Settings > API > PostgREST</strong> e clique no botão <strong>'Reload Schema Cache'</strong>. Sem isso, o Supabase continuará achando que as tabelas são as antigas.</li>
+                            <li><strong>PASSO CRÍTICO:</strong> Vá em <strong>Settings {' > '} API {' > '} PostgREST</strong> e clique no botão <strong>'Reload Schema Cache'</strong>. Sem isso, o Supabase continuará achando que as tabelas são as antigas.</li>
                         </ol>
                     </div>
                 </div>

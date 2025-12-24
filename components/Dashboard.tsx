@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { TrendingUp, TrendingDown, ArrowUpRight, ArrowDownRight, ArrowRight, Plus, Calendar, Filter, Download, Loader2 } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { formatCurrency, formatDate, downloadCSV } from '../lib/utils';
@@ -27,6 +27,11 @@ type Period = '1M' | '3M' | '1Y';
 const Dashboard: React.FC<{ setActivePage: (p: Page) => void }> = ({ setActivePage }) => {
     const { transactions } = useData();
     const [chartPeriod, setChartPeriod] = useState<Period>('1M');
+    const [isMounted, setIsMounted] = useState(false);
+
+    useEffect(() => {
+        setIsMounted(true);
+    }, []);
 
     // Somatória garantindo conversão numérica estrita
     const revenue = useMemo(() => 
@@ -64,13 +69,15 @@ const Dashboard: React.FC<{ setActivePage: (p: Page) => void }> = ({ setActivePa
             aggregated[day] = (aggregated[day] || 0) + val;
         });
 
-        return Object.entries(aggregated)
+        const result = Object.entries(aggregated)
             .map(([date, value]) => ({ 
                 name: formatDate(date), 
                 value, 
                 rawDate: new Date(date).getTime() 
             }))
             .sort((a, b) => a.rawDate - b.rawDate);
+
+        return result.length > 0 ? result : [{ name: 'N/A', value: 0 }];
     }, [transactions, chartPeriod]);
 
     return (
@@ -114,32 +121,38 @@ const Dashboard: React.FC<{ setActivePage: (p: Page) => void }> = ({ setActivePa
                                 ))}
                             </div>
                         </div>
-                        <div style={{ height: 350 }}>
-                            <ResponsiveContainer width="100%" height="100%">
-                                <AreaChart data={chartData}>
-                                    <defs>
-                                        <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
-                                            <stop offset="5%" stopColor="#000" stopOpacity={0.08}/>
-                                            <stop offset="95%" stopColor="#000" stopOpacity={0}/>
-                                        </linearGradient>
-                                    </defs>
-                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                                    <XAxis 
-                                        dataKey="name" 
-                                        axisLine={false} 
-                                        tickLine={false} 
-                                        tick={{fill: '#94a3b8', fontSize: 10}} 
-                                        dy={10} 
-                                        minTickGap={30}
-                                    />
-                                    <YAxis axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 10}} tickFormatter={(v) => `$${v/1000}k`} />
-                                    <Tooltip 
-                                        contentStyle={{borderRadius: '16px', border: 'none', boxShadow: '0 10px 30px rgba(0,0,0,0.1)'}} 
-                                        formatter={(value: number) => [formatCurrency(value), 'Net Flow']}
-                                    />
-                                    <Area type="monotone" dataKey="value" stroke="#000" strokeWidth={3} fillOpacity={1} fill="url(#colorValue)" />
-                                </AreaChart>
-                            </ResponsiveContainer>
+                        <div style={{ height: 350, minHeight: 350, width: '100%' }}>
+                            {isMounted && chartData.length > 0 ? (
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <AreaChart data={chartData}>
+                                        <defs>
+                                            <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
+                                                <stop offset="5%" stopColor="#000" stopOpacity={0.08}/>
+                                                <stop offset="95%" stopColor="#000" stopOpacity={0}/>
+                                            </linearGradient>
+                                        </defs>
+                                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                                        <XAxis 
+                                            dataKey="name" 
+                                            axisLine={false} 
+                                            tickLine={false} 
+                                            tick={{fill: '#94a3b8', fontSize: 10}} 
+                                            dy={10} 
+                                            minTickGap={30}
+                                        />
+                                        <YAxis axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 10}} tickFormatter={(v) => `$${v/1000}k`} />
+                                        <Tooltip 
+                                            contentStyle={{borderRadius: '16px', border: 'none', boxShadow: '0 10px 30px rgba(0,0,0,0.1)'}} 
+                                            formatter={(value: number) => [formatCurrency(value), 'Net Flow']}
+                                        />
+                                        <Area type="monotone" dataKey="value" stroke="#000" strokeWidth={3} fillOpacity={1} fill="url(#colorValue)" />
+                                    </AreaChart>
+                                </ResponsiveContainer>
+                            ) : (
+                                <div className="h-100 d-flex align-items-center justify-content-center text-muted">
+                                    <Loader2 className="animate-spin" />
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>
