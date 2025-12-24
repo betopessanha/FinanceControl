@@ -45,10 +45,10 @@ const Settings: React.FC = () => {
         setIsSyncing(false);
     };
 
-    const schemaSQL = `-- TRUCKING.IO - NUCLEAR RESET (v12)
--- AVISO: Isso apagará todos os dados existentes no Supabase para garantir estrutura limpa.
+    const schemaSQL = `-- TRUCKING.IO - USA ACCOUNTING ENGINE (v15)
+-- FIX: user_id ALLOW NULL para permitir seeding via SQL Editor
 
--- 1. Limpeza Total
+-- 1. Limpeza
 DROP TABLE IF EXISTS public.transactions CASCADE;
 DROP TABLE IF EXISTS public.loads CASCADE;
 DROP TABLE IF EXISTS public.bank_accounts CASCADE;
@@ -56,10 +56,10 @@ DROP TABLE IF EXISTS public.business_entities CASCADE;
 DROP TABLE IF EXISTS public.trucks CASCADE;
 DROP TABLE IF EXISTS public.categories CASCADE;
 
--- 2. Recriação das Tabelas
+-- 2. Estrutura (Removido NOT NULL de user_id para compatibilidade com Seeding Manual)
 CREATE TABLE public.business_entities (
-    id UUID PRIMARY KEY,
-    user_id UUID NOT NULL DEFAULT auth.uid(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID DEFAULT auth.uid(),
     name TEXT NOT NULL,
     structure TEXT,
     tax_form TEXT,
@@ -75,8 +75,8 @@ CREATE TABLE public.business_entities (
 );
 
 CREATE TABLE public.categories (
-    id UUID PRIMARY KEY,
-    user_id UUID NOT NULL DEFAULT auth.uid(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID DEFAULT auth.uid(),
     name TEXT NOT NULL,
     type TEXT NOT NULL,
     is_tax_deductible BOOLEAN DEFAULT true,
@@ -84,8 +84,8 @@ CREATE TABLE public.categories (
 );
 
 CREATE TABLE public.trucks (
-    id UUID PRIMARY KEY,
-    user_id UUID NOT NULL DEFAULT auth.uid(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID DEFAULT auth.uid(),
     unit_number TEXT NOT NULL,
     make TEXT,
     model TEXT,
@@ -94,8 +94,8 @@ CREATE TABLE public.trucks (
 );
 
 CREATE TABLE public.bank_accounts (
-    id UUID PRIMARY KEY,
-    user_id UUID NOT NULL DEFAULT auth.uid(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID DEFAULT auth.uid(),
     business_entity_id UUID REFERENCES public.business_entities(id) ON DELETE SET NULL,
     name TEXT NOT NULL,
     type TEXT,
@@ -104,8 +104,8 @@ CREATE TABLE public.bank_accounts (
 );
 
 CREATE TABLE public.transactions (
-    id UUID PRIMARY KEY,
-    user_id UUID NOT NULL DEFAULT auth.uid(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID DEFAULT auth.uid(),
     account_id UUID REFERENCES public.bank_accounts(id) ON DELETE CASCADE,
     category_id UUID REFERENCES public.categories(id) ON DELETE SET NULL,
     truck_id UUID REFERENCES public.trucks(id) ON DELETE SET NULL,
@@ -118,8 +118,8 @@ CREATE TABLE public.transactions (
 );
 
 CREATE TABLE public.loads (
-    id UUID PRIMARY KEY,
-    user_id UUID NOT NULL DEFAULT auth.uid(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID DEFAULT auth.uid(),
     truck_id UUID REFERENCES public.trucks(id) ON DELETE SET NULL,
     current_location TEXT,
     pickup_location TEXT,
@@ -136,7 +136,33 @@ CREATE TABLE public.loads (
     created_at TIMESTAMPTZ DEFAULT now()
 );
 
--- 3. Habilitar RLS
+-- 3. Inserção de Categorias Contábeis USA Padrão
+-- Estas categorias ficarão com user_id NULL, tornando-as "globais" ou "sugeridas"
+INSERT INTO public.categories (name, type, is_tax_deductible) VALUES
+('Freight Revenue', 'Income', false),
+('Fuel Surcharge', 'Income', false),
+('Detention / Layover', 'Income', false),
+('Fuel & DEF', 'Expense', true),
+('Repairs & Maintenance', 'Expense', true),
+('Tires', 'Expense', true),
+('Insurance Premiums', 'Expense', true),
+('Licenses & Permits', 'Expense', true),
+('Tolls & Scales', 'Expense', true),
+('Factoring Fees', 'Expense', true),
+('Dispatch Fees', 'Expense', true),
+('Driver Wages', 'Expense', true),
+('Meals & Per Diem', 'Expense', true),
+('Office & Software', 'Expense', true),
+('Communications', 'Expense', true),
+('Professional Services (CPA/Legal)', 'Expense', true),
+('Loan Interest', 'Expense', true),
+('Equipment Lease', 'Expense', true),
+('HVUT 2290 Tax', 'Expense', true),
+('Owner Draw / Distributions', 'Expense', false),
+('Loan Principal Payment', 'Expense', false),
+('Personal Expenses', 'Expense', false);
+
+-- 4. RLS
 ALTER TABLE public.business_entities ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.categories ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.trucks ENABLE ROW LEVEL SECURITY;
@@ -144,21 +170,23 @@ ALTER TABLE public.bank_accounts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.transactions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.loads ENABLE ROW LEVEL SECURITY;
 
--- 4. Políticas de Acesso Total
+-- 5. Políticas (Permite ver itens com user_id NULL ou do próprio usuário)
 DO $$ 
 DECLARE
     t text;
 BEGIN
     FOR t IN SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name IN ('business_entities', 'categories', 'trucks', 'bank_accounts', 'transactions', 'loads')
     LOOP
-        EXECUTE format('CREATE POLICY "FullAccess" ON public.%I FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id)', t);
+        EXECUTE format('CREATE POLICY "FullAccess" ON public.%I FOR ALL USING (auth.uid() = user_id OR user_id IS NULL) WITH CHECK (auth.uid() = user_id)', t);
     END LOOP;
 END $$;
 
--- 5. Trigger de UserID
+-- 6. Trigger (Garante que novos inserts via APP peguem o user_id do logado)
 CREATE OR REPLACE FUNCTION public.set_user_id() RETURNS TRIGGER AS $$
 BEGIN
-  NEW.user_id := auth.uid();
+  IF NEW.user_id IS NULL THEN
+    NEW.user_id := auth.uid();
+  END IF;
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
@@ -305,14 +333,14 @@ GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO authenticated;`;
                 </div>
             </div>
 
-            <Modal isOpen={showSchema} onClose={() => setShowSchema(false)} title="NUCLEAR RESET SQL (v12)" size="lg">
+            <Modal isOpen={showSchema} onClose={() => setShowSchema(false)} title="NUCLEAR RESET SQL (v15)" size="lg">
                 <div className="alert alert-danger small mb-3 shadow-sm border-0 d-flex align-items-start">
                     <AlertTriangle size={24} className="me-3 mt-1 flex-shrink-0" />
                     <div>
                         <h6 className="fw-bold mb-1">CUIDADO: ESTE SCRIPT APAGA TUDO</h6>
                         Para que o cadastro funcione, o Supabase precisa de uma estrutura limpa e do cache atualizado.
                         <ol className="ps-3 mt-2 mb-0">
-                            <li>Copie o script v12 abaixo.</li>
+                            <li>Copie o script v15 abaixo (corrigido para Seeding).</li>
                             <li>No Supabase, vá em <strong>SQL Editor</strong> e rode o script.</li>
                             <li><strong>PASSO CRÍTICO:</strong> Vá em <strong>Settings > API > PostgREST</strong> e clique no botão <strong>'Reload Schema Cache'</strong>. Sem isso, o Supabase continuará achando que as tabelas são as antigas.</li>
                         </ol>
