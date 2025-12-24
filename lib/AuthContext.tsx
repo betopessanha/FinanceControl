@@ -37,15 +37,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const handleSignOut = async () => {
         try {
-            if (isSupabaseConfigured && supabase) await supabase.auth.signOut();
-        } catch (e) {}
+            if (isSupabaseConfigured && supabase) {
+                await supabase.auth.signOut();
+            }
+        } catch (e) {
+            console.error("Error signing out:", e);
+        }
         setUser(null);
         localStorage.removeItem('active_session_user');
+        // Clear Supabase specific keys to prevent refresh token errors
+        for (const key in localStorage) {
+            if (key.startsWith('sb-')) localStorage.removeItem(key);
+        }
     };
 
     const updateLocalCredentials = (email: string, password: string) => {
         const localUsers = JSON.parse(localStorage.getItem('app_local_users') || '[]');
-        // Update or add the admin user
         const otherUsers = localUsers.filter((u: any) => u.id !== 'local-admin');
         const newUser = { id: 'local-admin', email, password, role: 'admin' };
         localStorage.setItem('app_local_users', JSON.stringify([...otherUsers, newUser]));
@@ -59,7 +66,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const signIn = async (email: string, password: string) => {
         const lowerEmail = email.toLowerCase().trim();
         
-        // 1. Try Supabase first if configured
         if (isSupabaseConfigured && supabase) {
             try {
                 const { data, error } = await supabase.auth.signInWithPassword({ email: lowerEmail, password });
@@ -70,12 +76,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     return { error: null };
                 }
                 if (error) return { error: error.message };
-            } catch (e) {
-                console.warn("Cloud auth error");
+            } catch (e: any) {
+                return { error: e.message || "Cloud authentication service unavailable." };
             }
         } 
 
-        // 2. Try Local Registered Users
         const localUsers = JSON.parse(localStorage.getItem('app_local_users') || '[]');
         const found = localUsers.find((u: any) => u.email.toLowerCase() === lowerEmail && u.password === password);
         
@@ -86,8 +91,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             return { error: null };
         }
 
-        // 3. Fallback/Bypass: Allow "admin/admin" if not explicitly in the list but credentials match
-        // This prevents lockouts when localUsers has items but no 'admin' user was officially registered.
         if (lowerEmail === 'admin' && password === 'admin') {
             const initialAdmin = { id: 'local-admin', email: 'admin', role: 'admin' };
             setUser(initialAdmin as any);
@@ -109,7 +112,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 return { error: "Could not connect to cloud." };
             }
         } else {
-            // Local Sign Up
             const localUsers = JSON.parse(localStorage.getItem('app_local_users') || '[]');
             if (localUsers.some((u: any) => u.email.toLowerCase() === lowerEmail)) {
                 return { error: "User already exists." };
@@ -122,24 +124,34 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     useEffect(() => {
         const initAuth = async () => {
-            const stored = localStorage.getItem('active_session_user');
-            if (stored) {
-                try {
+            setLoading(true);
+            try {
+                // Check local session first
+                const stored = localStorage.getItem('active_session_user');
+                if (stored) {
                     setUser(JSON.parse(stored));
-                    setLoading(false);
-                    return;
-                } catch (e) { localStorage.removeItem('active_session_user'); }
-            }
+                }
 
-            if (isSupabaseConfigured && supabase) {
-                try {
-                    const { data: { session } } = await supabase.auth.getSession();
-                    if (session?.user) {
-                        setUser({ id: session.user.id, email: session.user.email || '', role: 'admin' });
+                // If Supabase is active, check the actual cloud session
+                if (isSupabaseConfigured && supabase) {
+                    const { data: { session }, error } = await supabase.auth.getSession();
+                    
+                    // If there's a refresh token error, clear session
+                    if (error && (error.message.includes('Refresh Token') || error.status === 401)) {
+                        console.warn("Auth session expired or invalid. Clearing local state.");
+                        handleSignOut();
+                    } else if (session?.user) {
+                        const cloudUser = { id: session.user.id, email: session.user.email || '', role: 'admin' };
+                        setUser(cloudUser);
+                        localStorage.setItem('active_session_user', JSON.stringify(cloudUser));
                     }
-                } catch (e) {}
+                }
+            } catch (e) {
+                console.error("Auth initialization failed:", e);
+                // Fail silently and let user log in again
+            } finally {
+                setLoading(false);
             }
-            setLoading(false);
         };
         initAuth();
     }, []);
