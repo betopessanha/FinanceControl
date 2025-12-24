@@ -104,7 +104,7 @@ CREATE TABLE public.bank_accounts (
 );
 
 CREATE TABLE public.transactions (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID DEFAULT auth.uid(),
     account_id UUID REFERENCES public.bank_accounts(id) ON DELETE CASCADE,
     category_id UUID REFERENCES public.categories(id) ON DELETE SET NULL,
@@ -342,7 +342,7 @@ GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO authenticated;`;
                         <ol className="ps-3 mt-2 mb-0">
                             <li>Copie o script v15 abaixo (corrigido para Seeding).</li>
                             <li>No Supabase, vá em <strong>SQL Editor</strong> e rode o script.</li>
-                            <li><strong>PASSO CRÍTICO:</strong> Vá em <strong>Settings {' > '} API {' > '} PostgREST</strong> e clique no botão <strong>'Reload Schema Cache'</strong>. Sem isso, o Supabase continuará achando que as tabelas são as antigas.</li>
+                            <li><strong>PASSO CRÍTICO:</strong> Vá em <strong>Settings &gt; API &gt; PostgREST</strong> e clique no botão <strong>'Reload Schema Cache'</strong>. Sem isso, o Supabase continuará achando que as tabelas são as antigas.</li>
                         </ol>
                     </div>
                 </div>

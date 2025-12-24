@@ -30,7 +30,9 @@ const Dashboard: React.FC<{ setActivePage: (p: Page) => void }> = ({ setActivePa
     const [isMounted, setIsMounted] = useState(false);
 
     useEffect(() => {
-        setIsMounted(true);
+        // Delay chart rendering slightly to ensure container size is calculated
+        const timer = setTimeout(() => setIsMounted(true), 100);
+        return () => clearTimeout(timer);
     }, []);
 
     // Somatória garantindo conversão numérica estrita
@@ -49,7 +51,7 @@ const Dashboard: React.FC<{ setActivePage: (p: Page) => void }> = ({ setActivePa
     const profit = revenue - expense;
 
     const chartData = useMemo(() => {
-        if (transactions.length === 0) return [];
+        if (transactions.length === 0) return [{ name: 'N/A', value: 0 }];
 
         const lastDate = transactions.length > 0 
             ? new Date(Math.max(...transactions.map(t => new Date(t.date).getTime())))
@@ -106,7 +108,7 @@ const Dashboard: React.FC<{ setActivePage: (p: Page) => void }> = ({ setActivePa
 
             <div className="row g-4">
                 <div className="col-12 col-xl-8">
-                    <div className="card p-4 h-100 overflow-hidden">
+                    <div className="card p-4 h-100 overflow-hidden" style={{ minHeight: '450px' }}>
                         <div className="d-flex justify-content-between align-items-center mb-4">
                             <h5 className="fw-800 text-black mb-0">Cash Flow Trends</h5>
                             <div className="btn-group border rounded-3 p-1 d-print-none">
@@ -121,10 +123,10 @@ const Dashboard: React.FC<{ setActivePage: (p: Page) => void }> = ({ setActivePa
                                 ))}
                             </div>
                         </div>
-                        <div style={{ height: 350, minHeight: 350, width: '100%' }}>
-                            {isMounted && chartData.length > 0 ? (
-                                <ResponsiveContainer width="100%" height="100%">
-                                    <AreaChart data={chartData}>
+                        <div style={{ flex: 1, minHeight: '350px', width: '100%' }}>
+                            {isMounted ? (
+                                <ResponsiveContainer width="99%" height={350}>
+                                    <AreaChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                                         <defs>
                                             <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
                                                 <stop offset="5%" stopColor="#000" stopOpacity={0.08}/>
@@ -149,7 +151,7 @@ const Dashboard: React.FC<{ setActivePage: (p: Page) => void }> = ({ setActivePa
                                     </AreaChart>
                                 </ResponsiveContainer>
                             ) : (
-                                <div className="h-100 d-flex align-items-center justify-content-center text-muted">
+                                <div className="h-100 d-flex align-items-center justify-content-center text-muted" style={{ minHeight: '350px' }}>
                                     <Loader2 className="animate-spin" />
                                 </div>
                             )}
@@ -177,6 +179,9 @@ const Dashboard: React.FC<{ setActivePage: (p: Page) => void }> = ({ setActivePa
                                     </span>
                                 </div>
                             ))}
+                            {transactions.length === 0 && (
+                                <div className="text-center py-4 text-muted small">No recent activity</div>
+                            )}
                         </div>
                         <button onClick={() => setActivePage('Transactions')} className="btn btn-white w-100 border mt-4 fw-bold d-flex align-items-center justify-content-center d-print-none">
                             View All <ArrowRight size={16} className="ms-2" />
