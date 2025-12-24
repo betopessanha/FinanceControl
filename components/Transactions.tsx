@@ -1,14 +1,17 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import Card, { CardContent } from './ui/Card';
 import { Transaction, TransactionType, Category, BankAccount } from '../types';
 import { formatCurrency, formatDate, downloadCSV, generateId } from '../lib/utils';
-import { PlusCircle, Search, Edit2, Loader2, Calendar, Wallet, Trash2, Save } from 'lucide-react';
+import { PlusCircle, Search, Edit2, Loader2, Calendar, Wallet, Trash2, Save, Sparkles, Wand2 } from 'lucide-react';
 import Modal from './ui/Modal';
 import { useData } from '../lib/DataContext';
 import ExportMenu from './ui/ExportMenu';
+import { GoogleGenAI } from "@google/genai";
 
 /**
  * Transactions Ledger component for listing and managing financial movements.
+ * Enhanced with Gemini AI Categorization.
  */
 const Transactions: React.FC = () => {
     const { 
@@ -20,6 +23,7 @@ const Transactions: React.FC = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [isFormModalOpen, setIsFormModalOpen] = useState(false);
     const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
+    const [isAiSuggesting, setIsAiSuggesting] = useState(false);
 
     const [formData, setFormData] = useState<Omit<Transaction, 'id'>>({
         date: new Date().toISOString().split('T')[0],
@@ -63,6 +67,44 @@ const Transactions: React.FC = () => {
             });
         }
         setIsFormModalOpen(true);
+    };
+
+    const handleSuggestCategory = async () => {
+        if (!formData.description) return;
+        
+        setIsAiSuggesting(true);
+        try {
+            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+            const catNames = categories
+                .filter(c => c.type === formData.type)
+                .map(c => c.name)
+                .join(', ');
+
+            const prompt = `You are a professional US Trucking Accountant. 
+            Based on the transaction description: "${formData.description}", 
+            suggest the most appropriate accounting category from this list: [${catNames}]. 
+            Respond ONLY with a JSON object in this format: {"suggestedCategory": "Category Name", "reason": "brief reason"}`;
+
+            const result = await ai.models.generateContent({
+                model: 'gemini-3-flash-preview',
+                contents: prompt,
+                config: { responseMimeType: "application/json" }
+            });
+
+            const suggestion = JSON.parse(result.text);
+            const matchedCategory = categories.find(c => 
+                c.name.toLowerCase() === suggestion.suggestedCategory.toLowerCase() && 
+                c.type === formData.type
+            );
+
+            if (matchedCategory) {
+                setFormData(prev => ({ ...prev, category: matchedCategory }));
+            }
+        } catch (error) {
+            console.error("AI Categorization failed:", error);
+        } finally {
+            setIsAiSuggesting(false);
+        }
     };
 
     const handleSaveTransaction = async (e: React.FormEvent) => {
@@ -183,8 +225,8 @@ const Transactions: React.FC = () => {
                     <div className="mb-3">
                         <label className="form-label fw-bold small text-muted">Transaction Type</label>
                         <div className="d-flex gap-2 p-1 bg-light rounded">
-                            <button type="button" onClick={() => setFormData({...formData, type: TransactionType.EXPENSE})} className={`btn flex-fill ${formData.type === TransactionType.EXPENSE ? 'btn-white shadow-sm text-danger fw-bold' : 'text-muted'}`}>Expense</button>
-                            <button type="button" onClick={() => setFormData({...formData, type: TransactionType.INCOME})} className={`btn flex-fill ${formData.type === TransactionType.INCOME ? 'btn-white shadow-sm text-success fw-bold' : 'text-muted'}`}>Income</button>
+                            <button type="button" onClick={() => setFormData({...formData, type: TransactionType.EXPENSE, category: undefined})} className={`btn flex-fill ${formData.type === TransactionType.EXPENSE ? 'btn-white shadow-sm text-danger fw-bold' : 'text-muted'}`}>Expense</button>
+                            <button type="button" onClick={() => setFormData({...formData, type: TransactionType.INCOME, category: undefined})} className={`btn flex-fill ${formData.type === TransactionType.INCOME ? 'btn-white shadow-sm text-success fw-bold' : 'text-muted'}`}>Income</button>
                             <button type="button" onClick={() => setFormData({...formData, type: TransactionType.TRANSFER})} className={`btn flex-fill ${formData.type === TransactionType.TRANSFER ? 'btn-white shadow-sm text-primary fw-bold' : 'text-muted'}`}>Transfer</button>
                         </div>
                     </div>
@@ -196,7 +238,7 @@ const Transactions: React.FC = () => {
 
                     <div className="mb-3">
                         <label className="form-label fw-bold small text-muted">Description</label>
-                        <input type="text" className="form-control" value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} required />
+                        <input type="text" className="form-control" value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} placeholder="e.g. Fuel purchase at Pilot" required />
                     </div>
 
                     <div className="row g-3 mb-3">
@@ -218,7 +260,19 @@ const Transactions: React.FC = () => {
 
                     {formData.type !== TransactionType.TRANSFER && (
                         <div className="mb-4">
-                            <label className="form-label fw-bold small text-muted">Category</label>
+                            <div className="d-flex justify-content-between align-items-center mb-1">
+                                <label className="form-label fw-bold small text-muted mb-0">Category</label>
+                                <button 
+                                    type="button" 
+                                    onClick={handleSuggestCategory}
+                                    disabled={isAiSuggesting || !formData.description}
+                                    className={`btn btn-sm d-flex align-items-center gap-1 border-0 ${isAiSuggesting ? 'text-muted' : 'text-primary fw-bold'}`}
+                                    style={{ fontSize: '0.75rem' }}
+                                >
+                                    {isAiSuggesting ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+                                    AI Suggest
+                                </button>
+                            </div>
                             <select 
                                 className="form-select" 
                                 value={formData.category?.id || ''} 
