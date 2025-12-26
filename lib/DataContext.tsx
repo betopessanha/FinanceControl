@@ -126,7 +126,14 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
                         supabase.from('transactions').select('*')
                     ]);
 
-                    if (resEntities.data?.length) { setBusinessEntities(resEntities.data); saveToLocal(STORAGE_KEYS.ENTITIES, resEntities.data); }
+                    if (resEntities.data?.length) { 
+                        const mapped = resEntities.data.map(e => ({
+                            id: e.id, name: e.name, structure: e.structure, taxForm: e.tax_form,
+                            ein: e.ein, email: e.email, phone: e.phone, website: e.website,
+                            address: e.address, city: e.city, state: e.state, zip: e.zip
+                        }));
+                        setBusinessEntities(mapped); saveToLocal(STORAGE_KEYS.ENTITIES, mapped); 
+                    }
                     if (resAccs.data?.length) {
                         const mapped = resAccs.data.map(a => ({ id: a.id, name: a.name, type: a.type, initialBalance: parseFloat(a.initial_balance) || 0, businessEntityId: a.business_entity_id }));
                         setAccounts(mapped); saveToLocal(STORAGE_KEYS.ACCOUNTS, mapped);
@@ -135,7 +142,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
                         const mapped = resTrucks.data.map(t => ({ id: t.id, unitNumber: t.unit_number, make: t.make, model: t.model, year: t.year }));
                         setTrucks(mapped); saveToLocal(STORAGE_KEYS.TRUCKS, mapped);
                     }
-                    if (resCats.data?.length) { setCategories(resCats.data); saveToLocal(STORAGE_KEYS.CATEGORIES, resCats.data); }
+                    if (resCats.data?.length) { 
+                        const mapped = resCats.data.map(c => ({
+                            id: c.id, name: c.name, type: c.type, isTaxDeductible: c.is_tax_deductible
+                        }));
+                        setCategories(mapped); saveToLocal(STORAGE_KEYS.CATEGORIES, mapped); 
+                    }
                     if (resLoads.data?.length) {
                         const mapped = resLoads.data.map(l => ({
                             id: l.id, currentLocation: l.current_location, milesToPickup: parseFloat(l.miles_to_pickup) || 0,
@@ -147,11 +159,13 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
                         setLoadRecords(mapped); saveToLocal(STORAGE_KEYS.LOADS, mapped);
                     }
                     if (resTrans.data?.length) {
+                        const allCats = resCats.data || localCats;
+                        const allTrucks = resTrucks.data || localTrucks;
                         const mapped = resTrans.data.map(t => ({
                             id: t.id, date: t.date, description: t.description, amount: parseFloat(t.amount) || 0,
                             type: t.type as TransactionType, accountId: t.account_id,
-                            category: (resCats.data || localCats).find(c => c.id === t.category_id),
-                            truck: (resTrucks.data || localTrucks).find(tr => tr.id === t.truck_id)
+                            category: allCats.find((c: any) => c.id === t.category_id),
+                            truck: allTrucks.find((tr: any) => tr.id === t.truck_id)
                         }));
                         setTransactions(mapped); saveToLocal(STORAGE_KEYS.TRANSACTIONS, mapped);
                     }
@@ -167,9 +181,14 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             const { data: { session } } = await supabase.auth.getSession();
             if (!session) return { success: false, message: "Please sign in with a real account." };
 
-            // 1. Entities
+            // 1. Entities (Map taxForm -> tax_form)
             if (businessEntities.length) {
-                await supabase.from('business_entities').upsert(businessEntities.map(e => ({ ...e, user_id: session.user.id })));
+                await supabase.from('business_entities').upsert(businessEntities.map(e => ({ 
+                    id: e.id, name: e.name, structure: e.structure, tax_form: e.taxForm, 
+                    ein: e.ein, email: e.email, phone: e.phone, website: e.website,
+                    address: e.address, city: e.city, state: e.state, zip: e.zip,
+                    user_id: session.user.id 
+                })));
             }
             // 2. Categories
             if (categories.length) {
@@ -215,7 +234,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             if (method === 'delete') res = await supabase.from(table).delete().eq('id', id);
             else if (method === 'insert') res = await supabase.from(table).insert([{ ...data, user_id: session.user.id }]);
             else res = await supabase.from(table).update({ ...data, user_id: session.user.id }).eq('id', id);
-            if (res.error) { console.error(`Sync Fail [${table}]:`, res.error.message); return false; }
+            
+            if (res.error) { 
+                console.error(`Sync Fail [${table}]:`, res.error.message); 
+                return false; 
+            }
             return true;
         } catch (e) { return false; }
     };
@@ -230,12 +253,20 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             addLocalEntity: async (e) => {
                 const updated = [...businessEntities, e];
                 setBusinessEntities(updated); saveToLocal(STORAGE_KEYS.ENTITIES, updated);
-                return syncToCloud('business_entities', e.id, e, 'insert');
+                return syncToCloud('business_entities', e.id, { 
+                    id: e.id, name: e.name, structure: e.structure, tax_form: e.taxForm, 
+                    ein: e.ein, email: e.email, phone: e.phone, website: e.website, 
+                    address: e.address, city: e.city, state: e.state, zip: e.zip 
+                }, 'insert');
             },
             updateLocalEntity: async (e) => {
                 const updated = businessEntities.map(x => x.id === e.id ? e : x);
                 setBusinessEntities(updated); saveToLocal(STORAGE_KEYS.ENTITIES, updated);
-                return syncToCloud('business_entities', e.id, e, 'update');
+                return syncToCloud('business_entities', e.id, { 
+                    name: e.name, structure: e.structure, tax_form: e.taxForm,
+                    ein: e.ein, email: e.email, phone: e.phone, website: e.website, 
+                    address: e.address, city: e.city, state: e.state, zip: e.zip 
+                }, 'update');
             },
             deleteLocalEntity: async (id) => {
                 const updated = businessEntities.filter(x => x.id !== id);
@@ -322,21 +353,24 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             addLocalLoad: async (l) => {
                 const updated = [l, ...loadRecords];
                 setLoadRecords(updated); saveToLocal(STORAGE_KEYS.LOADS, updated);
+                // Ensure truck_id is only sent if it is a valid UUID to avoid foreign key errors
+                const cloudTruckId = isValidUUID(l.truckId || '') ? l.truckId : null;
                 return await syncToCloud('loads', l.id, {
                     id: l.id, current_location: l.currentLocation, miles_to_pickup: l.milesToPickup, pickup_location: l.pickupLocation,
                     pickup_date: l.pickupDate, miles_to_delivery: l.milesToDelivery, delivery_location: l.deliveryLocation,
                     delivery_date: l.deliveryDate, total_miles: l.totalMiles, payment_type: l.paymentType, rate: l.rate,
-                    total_revenue: l.totalRevenue, truck_id: isValidUUID(l.truckId || '') ? l.truckId : null, status: l.status
+                    total_revenue: l.totalRevenue, truck_id: cloudTruckId, status: l.status
                 }, 'insert');
             },
             updateLocalLoad: async (l) => {
                 const updated = loadRecords.map(x => x.id === l.id ? l : x);
                 setLoadRecords(updated); saveToLocal(STORAGE_KEYS.LOADS, updated);
+                const cloudTruckId = isValidUUID(l.truckId || '') ? l.truckId : null;
                 return await syncToCloud('loads', l.id, {
                     current_location: l.currentLocation, miles_to_pickup: l.milesToPickup, pickup_location: l.pickupLocation,
                     pickup_date: l.pickupDate, miles_to_delivery: l.milesToDelivery, delivery_location: l.deliveryLocation,
                     delivery_date: l.deliveryDate, total_miles: l.totalMiles, payment_type: l.paymentType, rate: l.rate,
-                    total_revenue: l.totalRevenue, truck_id: isValidUUID(l.truckId || '') ? l.truckId : null, status: l.status
+                    total_revenue: l.totalRevenue, truck_id: cloudTruckId, status: l.status
                 }, 'update');
             },
             deleteLocalLoad: async (id) => {

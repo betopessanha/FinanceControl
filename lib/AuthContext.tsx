@@ -54,11 +54,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const updateLocalCredentials = (email: string, password: string) => {
         const localUsers = JSON.parse(localStorage.getItem('app_local_users') || '[]');
         const otherUsers = localUsers.filter((u: any) => u.id !== 'local-admin');
-        const newUser = { id: 'local-admin', email, password, role: 'admin' };
+        // Fix: Explicitly cast role to UserRole
+        const newUser = { id: 'local-admin', email, password, role: 'admin' as UserRole };
         localStorage.setItem('app_local_users', JSON.stringify([...otherUsers, newUser]));
         
         if (user && user.id === 'local-admin') {
-            setUser(newUser as any);
+            setUser(newUser);
             localStorage.setItem('active_session_user', JSON.stringify(newUser));
         }
     };
@@ -85,15 +86,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const found = localUsers.find((u: any) => u.email.toLowerCase() === lowerEmail && u.password === password);
         
         if (found) {
-            const sessionUser = { id: found.id, email: found.email, role: found.role };
-            setUser(sessionUser as any);
+            // Fix: Explicitly type sessionUser as User to ensure role is correctly assigned as UserRole
+            const sessionUser: User = { id: found.id, email: found.email, role: found.role as UserRole };
+            setUser(sessionUser);
             localStorage.setItem('active_session_user', JSON.stringify(sessionUser));
             return { error: null };
         }
 
         if (lowerEmail === 'admin' && password === 'admin') {
-            const initialAdmin = { id: 'local-admin', email: 'admin', role: 'admin' };
-            setUser(initialAdmin as any);
+            // Fix: Explicitly type initialAdmin as User
+            const initialAdmin: User = { id: 'local-admin', email: 'admin', role: 'admin' };
+            setUser(initialAdmin);
             localStorage.setItem('active_session_user', JSON.stringify(initialAdmin));
             return { error: null };
         }
@@ -116,7 +119,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             if (localUsers.some((u: any) => u.email.toLowerCase() === lowerEmail)) {
                 return { error: "User already exists." };
             }
-            const newUser = { id: `local-${Date.now()}`, email: lowerEmail, password, role: 'admin' };
+            // Fix: Explicitly cast role to UserRole
+            const newUser = { id: `local-${Date.now()}`, email: lowerEmail, password, role: 'admin' as UserRole };
             localStorage.setItem('app_local_users', JSON.stringify([...localUsers, newUser]));
             return { error: null, message: "Local account created successfully. You can now log in." };
         }
@@ -129,7 +133,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 // Check local session first
                 const stored = localStorage.getItem('active_session_user');
                 if (stored) {
-                    setUser(JSON.parse(stored));
+                    // Fix: Cast JSON.parse result to User
+                    setUser(JSON.parse(stored) as User);
                 }
 
                 // If Supabase is active, check the actual cloud session
@@ -141,7 +146,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                         console.warn("Auth session expired or invalid. Clearing local state.");
                         handleSignOut();
                     } else if (session?.user) {
-                        const cloudUser = { id: session.user.id, email: session.user.email || '', role: 'admin' };
+                        // Fix: Explicitly type cloudUser as User
+                        const cloudUser: User = { id: session.user.id, email: session.user.email || '', role: 'admin' };
                         setUser(cloudUser);
                         localStorage.setItem('active_session_user', JSON.stringify(cloudUser));
                     }

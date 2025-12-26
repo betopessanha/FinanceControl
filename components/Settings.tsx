@@ -45,8 +45,8 @@ const Settings: React.FC = () => {
         setIsSyncing(false);
     };
 
-    const schemaSQL = `-- TRUCKING.IO - USA ACCOUNTING ENGINE (v16)
--- CONSISTENCY UPDATE: All tables aligned with Loads RLS and structure
+    const schemaSQL = `-- TRUCKING.IO - USA ACCOUNTING ENGINE (v17)
+-- FINAL ALIGNMENT: Explicit column mapping and UUID validation
 
 -- 1. Limpeza
 DROP TABLE IF EXISTS public.transactions CASCADE;
@@ -62,7 +62,7 @@ CREATE TABLE public.business_entities (
     user_id UUID DEFAULT auth.uid(),
     name TEXT NOT NULL,
     structure TEXT,
-    tax_form TEXT,
+    tax_form TEXT, -- Mapped from taxForm in code
     ein TEXT,
     email TEXT,
     phone TEXT,
@@ -334,14 +334,14 @@ GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO authenticated;`;
                 </div>
             </div>
 
-            <Modal isOpen={showSchema} onClose={() => setShowSchema(false)} title="NUCLEAR RESET SQL (v16)" size="lg">
+            <Modal isOpen={showSchema} onClose={() => setShowSchema(false)} title="NUCLEAR RESET SQL (v17)" size="lg">
                 <div className="alert alert-danger small mb-3 shadow-sm border-0 d-flex align-items-start">
                     <AlertTriangle size={24} className="me-3 mt-1 flex-shrink-0" />
                     <div>
                         <h6 className="fw-bold mb-1">CUIDADO: ESTE SCRIPT APAGA TUDO</h6>
                         Para que o cadastro funcione, o Supabase precisa de uma estrutura limpa e do cache atualizado.
                         <ol className="ps-3 mt-2 mb-0">
-                            <li>Copie o script v16 abaixo (corrigido e alinhado).</li>
+                            <li>Copie o script v17 abaixo (corrigido e alinhado).</li>
                             <li>No Supabase, vá em <strong>SQL Editor</strong> e rode o script.</li>
                             <li><strong>PASSO CRÍTICO:</strong> Vá em <strong>Settings &gt; API &gt; PostgREST</strong> e clique no botão <strong>'Reload Schema Cache'</strong>. Sem isso, o Supabase continuará achando que as tabelas são as antigas.</li>
                         </ol>
