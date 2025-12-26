@@ -88,3 +88,14 @@ export const downloadCSV = (data: any[], filename: string) => {
     link.click();
     document.body.removeChild(link);
 };
+
+/**
+ * Download a CSV Template for Import
+ */
+export const downloadImportTemplate = () => {
+    const templateData = [
+        { date: '2024-01-25', description: 'Fuel Purchase Pilot', amount: '450.00', type: 'Expense', category: 'Fuel & DEF' },
+        { date: '2024-01-26', description: 'Load Payment #1234', amount: '2500.00', type: 'Income', category: 'Freight Revenue' }
+    ];
+    downloadCSV(templateData, 'trucking_import_template');
+};

@@ -1,9 +1,9 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import Card, { CardContent } from './ui/Card';
 import { Transaction, TransactionType, Category, BankAccount } from '../types';
-import { formatCurrency, formatDate, downloadCSV, generateId } from '../lib/utils';
-import { PlusCircle, Search, Edit2, Loader2, Calendar, Wallet, Trash2, Save, Sparkles, FileText, Check, AlertCircle, ArrowRight } from 'lucide-react';
+import { formatCurrency, formatDate, downloadCSV, generateId, downloadImportTemplate } from '../lib/utils';
+import { PlusCircle, Search, Edit2, Loader2, Calendar, Wallet, Trash2, Save, Sparkles, FileText, Check, AlertCircle, ArrowRight, Download, Upload, FileJson, Info } from 'lucide-react';
 import Modal from './ui/Modal';
 import { useData } from '../lib/DataContext';
 import ExportMenu from './ui/ExportMenu';
@@ -19,7 +19,9 @@ const Transactions: React.FC = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [isFormModalOpen, setIsFormModalOpen] = useState(false);
     const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+    const [importMode, setImportMode] = useState<'ai' | 'csv'>('ai');
     const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
+    const fileInputRef = useRef<HTMLInputElement>(null);
     
     // AI States
     const [isAiSuggesting, setIsAiSuggesting] = useState(false);
@@ -134,7 +136,43 @@ const Transactions: React.FC = () => {
         }
     };
 
+    const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            const content = event.target?.result as string;
+            const lines = content.split('\n');
+            const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+            
+            const data = lines.slice(1).filter(line => line.trim()).map(line => {
+                const values = line.split(',').map(v => v.trim().replace(/"/g, ''));
+                const obj: any = {};
+                headers.forEach((header, idx) => {
+                    obj[header] = values[idx];
+                });
+
+                // Normalização mínima
+                return {
+                    date: obj.date || obj.data || '',
+                    description: obj.description || obj.descricao || '',
+                    amount: parseFloat(obj.amount || obj.valor || '0'),
+                    type: (obj.type || obj.tipo || 'Expense').charAt(0).toUpperCase() + (obj.type || obj.tipo || 'Expense').slice(1),
+                    categoryName: obj.category || obj.categoria || 'Misc'
+                };
+            });
+
+            setImportPreview(data);
+        };
+        reader.readAsText(file);
+    };
+
     const handleSaveImported = async () => {
+        if (!formData.accountId) {
+            alert("Please select a target account first.");
+            return;
+        }
         setIsAiImporting(true);
         for (const item of importPreview) {
             const matchedCat = categories.find(c => c.name.toLowerCase() === item.categoryName?.toLowerCase());
@@ -143,7 +181,7 @@ const Transactions: React.FC = () => {
                 date: item.date,
                 description: item.description,
                 amount: Math.abs(item.amount),
-                type: item.type as TransactionType,
+                type: (item.type === 'Income' || item.type === 'Receita') ? TransactionType.INCOME : TransactionType.EXPENSE,
                 accountId: formData.accountId,
                 category: matchedCat
             };
@@ -153,6 +191,7 @@ const Transactions: React.FC = () => {
         setIsImportModalOpen(false);
         setImportPreview([]);
         setImportText('');
+        setImportMode('ai');
     };
 
     const handleSaveTransaction = async (e: React.FormEvent) => {
@@ -185,11 +224,11 @@ const Transactions: React.FC = () => {
                     <p className="text-muted mb-0 small">Record and manage your fleet's financial movements.</p>
                 </div>
                 <div className="d-flex gap-2">
-                    <button onClick={() => setIsImportModalOpen(true)} className="btn btn-outline-primary d-flex align-items-center bg-white shadow-sm border">
-                        <Sparkles size={18} className="me-2 text-primary" /> AI Statement Import
+                    <button onClick={() => { setIsImportModalOpen(true); setImportPreview([]); setImportText(''); }} className="btn btn-outline-primary d-flex align-items-center bg-white shadow-sm border px-3">
+                        <Upload size={18} className="me-2 text-primary" /> Import Transactions
                     </button>
                     <ExportMenu data={filteredTransactions} filename="transactions" />
-                    <button onClick={() => handleOpenModal()} className="btn btn-primary d-flex align-items-center shadow-sm">
+                    <button onClick={() => handleOpenModal()} className="btn btn-primary d-flex align-items-center shadow-sm px-4">
                         <PlusCircle size={18} className="me-2" /> Add Entry
                     </button>
                 </div>
@@ -268,11 +307,11 @@ const Transactions: React.FC = () => {
                 </CardContent>
             </Card>
 
-            {/* AI IMPORT MODAL */}
-            <Modal isOpen={isImportModalOpen} onClose={() => setIsImportModalOpen(false)} title="AI Bank Statement Import" size="lg">
+            {/* IMPORT MODAL */}
+            <Modal isOpen={isImportModalOpen} onClose={() => setIsImportModalOpen(false)} title="Import Financial Data" size="lg">
                 <div className="mb-4">
                     <label className="form-label fw-bold small text-muted">1. Select Target Account</label>
-                    <select className="form-select" value={formData.accountId} onChange={e => setFormData({...formData, accountId: e.target.value})}>
+                    <select className="form-select fw-bold" value={formData.accountId} onChange={e => setFormData({...formData, accountId: e.target.value})}>
                         <option value="">Select Account...</option>
                         {accounts.map(acc => <option key={acc.id} value={acc.id}>{acc.name}</option>)}
                     </select>
@@ -280,50 +319,91 @@ const Transactions: React.FC = () => {
 
                 {importPreview.length === 0 ? (
                     <div>
-                        <label className="form-label fw-bold small text-muted">2. Paste Statement Text</label>
-                        <textarea 
-                            className="form-control bg-light border-0 mb-3" 
-                            rows={8} 
-                            placeholder="Paste your bank transactions here (PDF copy/paste or CSV text)..."
-                            value={importText}
-                            onChange={(e) => setImportText(e.target.value)}
-                        ></textarea>
-                        <div className="d-flex justify-content-end">
-                            <button 
-                                onClick={handleAiImport} 
-                                disabled={isAiImporting || !importText || !formData.accountId}
-                                className="btn btn-primary px-4 d-flex align-items-center gap-2 shadow"
-                            >
-                                {isAiImporting ? <Loader2 size={18} className="animate-spin" /> : <Sparkles size={18} />}
-                                Analyze Statement with Gemini
-                            </button>
+                        <div className="mb-4">
+                            <label className="form-label fw-bold small text-muted">2. Choose Import Method</label>
+                            <div className="btn-group w-100 p-1 bg-light rounded-3 border">
+                                <button className={`btn btn-sm py-2 rounded-2 ${importMode === 'ai' ? 'btn-white shadow-sm fw-bold' : 'btn-transparent text-muted'}`} onClick={() => setImportMode('ai')}>
+                                    <Sparkles size={16} className="me-2 text-primary" /> AI Smart Paste
+                                </button>
+                                <button className={`btn btn-sm py-2 rounded-2 ${importMode === 'csv' ? 'btn-white shadow-sm fw-bold' : 'btn-transparent text-muted'}`} onClick={() => setImportMode('csv')}>
+                                    <FileText size={16} className="me-2 text-primary" /> CSV File Upload
+                                </button>
+                            </div>
                         </div>
+
+                        {importMode === 'ai' ? (
+                            <div className="animate-slide-up">
+                                <label className="form-label fw-bold small text-muted d-flex justify-content-between">
+                                    <span>3. Paste Statement Text</span>
+                                    <span className="text-primary fw-normal" style={{fontSize: '0.7rem'}}>AI will detect dates, amounts & categories</span>
+                                </label>
+                                <textarea 
+                                    className="form-control bg-light border-0 mb-3 font-monospace small" 
+                                    rows={8} 
+                                    placeholder="Paste your bank transactions here (PDF copy/paste or CSV text)..."
+                                    value={importText}
+                                    onChange={(e) => setImportText(e.target.value)}
+                                ></textarea>
+                                <div className="d-flex justify-content-end">
+                                    <button 
+                                        onClick={handleAiImport} 
+                                        disabled={isAiImporting || !importText || !formData.accountId}
+                                        className="btn btn-primary px-4 d-flex align-items-center gap-2 shadow fw-bold"
+                                    >
+                                        {isAiImporting ? <Loader2 size={18} className="animate-spin" /> : <Sparkles size={18} />}
+                                        Analyze with Gemini AI
+                                    </button>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="animate-slide-up text-center py-4 border-2 border-dashed rounded-4 bg-light">
+                                <Upload size={48} className="text-muted mb-3 opacity-50" />
+                                <h6 className="fw-bold">Upload Your CSV File</h6>
+                                <p className="text-muted small px-5">Make sure your file includes Date, Description, Amount, and Category columns.</p>
+                                
+                                <div className="d-flex justify-content-center gap-3 mt-4">
+                                    <button className="btn btn-white border px-4 fw-bold shadow-sm d-flex align-items-center gap-2" onClick={() => downloadImportTemplate()}>
+                                        <Download size={16} /> Download CSV Template
+                                    </button>
+                                    <button className="btn btn-primary px-4 fw-bold shadow-sm d-flex align-items-center gap-2" onClick={() => fileInputRef.current?.click()}>
+                                        <FileJson size={16} /> Select CSV File
+                                    </button>
+                                    <input type="file" ref={fileInputRef} className="d-none" accept=".csv" onChange={handleFileUpload} />
+                                </div>
+                                <div className="mt-3 text-muted" style={{fontSize: '0.7rem'}}>
+                                    <Info size={12} className="me-1" /> USA Format: MM/DD/YYYY or YYYY-MM-DD supported.
+                                </div>
+                            </div>
+                        )}
                     </div>
                 ) : (
-                    <div>
+                    <div className="animate-slide-up">
                         <div className="d-flex justify-content-between align-items-center mb-3">
-                            <h6 className="fw-bold mb-0">Detected Transactions ({importPreview.length})</h6>
-                            <button className="btn btn-sm btn-link text-muted" onClick={() => setImportPreview([])}>Clear & Restart</button>
+                            <h6 className="fw-800 mb-0 d-flex align-items-center gap-2">
+                                <Check size={20} className="text-success" /> 
+                                Detected Transactions ({importPreview.length})
+                            </h6>
+                            <button className="btn btn-sm btn-link text-muted fw-bold" onClick={() => { setImportPreview([]); setImportText(''); }}>Discard & Restart</button>
                         </div>
-                        <div className="table-responsive rounded border mb-4" style={{maxHeight: '300px'}}>
+                        <div className="table-responsive rounded-3 border mb-4 bg-white shadow-sm" style={{maxHeight: '350px'}}>
                             <table className="table table-sm align-middle mb-0">
                                 <thead className="bg-light sticky-top">
                                     <tr>
-                                        <th className="ps-3 py-2 small fw-bold">Date</th>
-                                        <th className="py-2 small fw-bold">Description</th>
-                                        <th className="py-2 small fw-bold">Category</th>
-                                        <th className="pe-3 py-2 text-end small fw-bold">Amount</th>
+                                        <th className="ps-3 py-3 small fw-800 text-muted text-uppercase">Date</th>
+                                        <th className="py-3 small fw-800 text-muted text-uppercase">Description</th>
+                                        <th className="py-3 small fw-800 text-muted text-uppercase">Category</th>
+                                        <th className="pe-3 py-3 text-end small fw-800 text-muted text-uppercase">Amount</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {importPreview.map((item, idx) => (
-                                        <tr key={idx}>
-                                            <td className="ps-3 py-2 small">{item.date}</td>
-                                            <td className="py-2 small fw-bold text-truncate" style={{maxWidth: '150px'}}>{item.description}</td>
+                                        <tr key={idx} className="border-bottom border-light">
+                                            <td className="ps-3 py-2 small fw-bold">{item.date}</td>
+                                            <td className="py-2 small fw-bold text-truncate" style={{maxWidth: '200px'}}>{item.description}</td>
                                             <td className="py-2">
-                                                <span className="badge bg-light text-dark border fw-normal">{item.categoryName || 'Misc'}</span>
+                                                <span className="badge bg-light text-dark border fw-bold" style={{fontSize: '0.65rem'}}>{item.categoryName || 'General'}</span>
                                             </td>
-                                            <td className={`pe-3 py-2 text-end small fw-bold ${item.type === 'Income' ? 'text-success' : 'text-danger'}`}>
+                                            <td className={`pe-3 py-2 text-end small fw-900 ${(item.type === 'Income' || item.type === 'Receita') ? 'text-success' : 'text-danger'}`}>
                                                 {formatCurrency(item.amount)}
                                             </td>
                                         </tr>
@@ -331,14 +411,17 @@ const Transactions: React.FC = () => {
                                 </tbody>
                             </table>
                         </div>
-                        <div className="alert alert-info d-flex align-items-center gap-2 py-2 small border-0 bg-opacity-10 mb-4">
-                            <Check size={16} className="text-info" />
-                            These transactions will be saved to the ledger and synced to cloud.
+                        <div className="alert alert-primary d-flex align-items-center gap-3 py-3 px-4 border-0 bg-opacity-10 mb-4 rounded-4 shadow-sm">
+                            <Info size={24} className="text-primary flex-shrink-0" />
+                            <div className="small">
+                                <strong>Verification Complete:</strong> These transactions will be recorded in the ledger and automatically synchronized to the cloud instance for <strong>{accounts.find(a => a.id === formData.accountId)?.name}</strong>.
+                            </div>
                         </div>
-                        <div className="d-flex justify-content-end gap-2">
-                            <button className="btn btn-light" onClick={() => setIsImportModalOpen(false)}>Cancel</button>
-                            <button className="btn btn-success px-4 fw-bold shadow" onClick={handleSaveImported} disabled={isAiImporting}>
-                                {isAiImporting ? <Loader2 size={18} className="animate-spin" /> : 'Confirm & Save All'}
+                        <div className="d-flex justify-content-end gap-3 pt-2">
+                            <button className="btn btn-white border px-4 fw-bold" onClick={() => setIsImportModalOpen(false)}>Cancel</button>
+                            <button className="btn btn-black px-5 py-2 fw-900 shadow-lg d-flex align-items-center gap-2" onClick={handleSaveImported} disabled={isAiImporting}>
+                                {isAiImporting ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
+                                CONFIRM & COMMIT TO LEDGER
                             </button>
                         </div>
                     </div>
@@ -350,34 +433,34 @@ const Transactions: React.FC = () => {
                 <form onSubmit={handleSaveTransaction}>
                     <div className="mb-3">
                         <label className="form-label fw-bold small text-muted">Transaction Type</label>
-                        <div className="d-flex gap-2 p-1 bg-light rounded">
-                            <button type="button" onClick={() => setFormData({...formData, type: TransactionType.EXPENSE, category: undefined})} className={`btn flex-fill ${formData.type === TransactionType.EXPENSE ? 'btn-white shadow-sm text-danger fw-bold' : 'text-muted'}`}>Expense</button>
-                            <button type="button" onClick={() => setFormData({...formData, type: TransactionType.INCOME, category: undefined})} className={`btn flex-fill ${formData.type === TransactionType.INCOME ? 'btn-white shadow-sm text-success fw-bold' : 'text-muted'}`}>Income</button>
-                            <button type="button" onClick={() => setFormData({...formData, type: TransactionType.TRANSFER})} className={`btn flex-fill ${formData.type === TransactionType.TRANSFER ? 'btn-white shadow-sm text-primary fw-bold' : 'text-muted'}`}>Transfer</button>
+                        <div className="d-flex gap-2 p-1 bg-light rounded shadow-sm border">
+                            <button type="button" onClick={() => setFormData({...formData, type: TransactionType.EXPENSE, category: undefined})} className={`btn flex-fill py-2 rounded-2 ${formData.type === TransactionType.EXPENSE ? 'btn-white shadow-sm text-danger fw-bold border' : 'text-muted border-0 bg-transparent'}`}>Expense</button>
+                            <button type="button" onClick={() => setFormData({...formData, type: TransactionType.INCOME, category: undefined})} className={`btn flex-fill py-2 rounded-2 ${formData.type === TransactionType.INCOME ? 'btn-white shadow-sm text-success fw-bold border' : 'text-muted border-0 bg-transparent'}`}>Income</button>
+                            <button type="button" onClick={() => setFormData({...formData, type: TransactionType.TRANSFER})} className={`btn flex-fill py-2 rounded-2 ${formData.type === TransactionType.TRANSFER ? 'btn-white shadow-sm text-primary fw-bold border' : 'text-muted border-0 bg-transparent'}`}>Transfer</button>
                         </div>
                     </div>
 
                     <div className="mb-3">
                         <label className="form-label fw-bold small text-muted">Date</label>
-                        <input type="date" className="form-control" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} required />
+                        <input type="date" className="form-control fw-bold" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} required />
                     </div>
 
                     <div className="mb-3">
                         <label className="form-label fw-bold small text-muted">Description</label>
-                        <input type="text" className="form-control" value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} placeholder="e.g. Fuel purchase at Pilot" required />
+                        <input type="text" className="form-control fw-bold" value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} placeholder="e.g. Fuel purchase at Pilot" required />
                     </div>
 
                     <div className="row g-3 mb-3">
                         <div className="col-md-6">
                             <label className="form-label fw-bold small text-muted">Amount</label>
                             <div className="input-group">
-                                <span className="input-group-text bg-light">$</span>
-                                <input type="number" step="0.01" className="form-control" value={formData.amount} onChange={e => setFormData({...formData, amount: parseFloat(e.target.value) || 0})} required />
+                                <span className="input-group-text bg-light border-end-0 fw-bold">$</span>
+                                <input type="number" step="0.01" className="form-control fw-bold border-start-0" value={formData.amount} onChange={e => setFormData({...formData, amount: parseFloat(e.target.value) || 0})} required />
                             </div>
                         </div>
                         <div className="col-md-6">
                             <label className="form-label fw-bold small text-muted">Account</label>
-                            <select className="form-select" value={formData.accountId} onChange={e => setFormData({...formData, accountId: e.target.value})} required>
+                            <select className="form-select fw-bold" value={formData.accountId} onChange={e => setFormData({...formData, accountId: e.target.value})} required>
                                 <option value="">Select Account...</option>
                                 {accounts.map(acc => <option key={acc.id} value={acc.id}>{acc.name}</option>)}
                             </select>
@@ -396,11 +479,11 @@ const Transactions: React.FC = () => {
                                     style={{ fontSize: '0.75rem' }}
                                 >
                                     {isAiSuggesting ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
-                                    AI Suggest
+                                    AI Auto-Detect
                                 </button>
                             </div>
                             <select 
-                                className="form-select" 
+                                className="form-select fw-bold" 
                                 value={formData.category?.id || ''} 
                                 onChange={e => {
                                     const cat = categories.find(c => c.id === e.target.value);
@@ -416,7 +499,7 @@ const Transactions: React.FC = () => {
                     {formData.type === TransactionType.TRANSFER && (
                         <div className="mb-4">
                             <label className="form-label fw-bold small text-muted">To Account</label>
-                            <select className="form-select" value={formData.toAccountId || ''} onChange={e => setFormData({...formData, toAccountId: e.target.value})} required>
+                            <select className="form-select fw-bold" value={formData.toAccountId || ''} onChange={e => setFormData({...formData, toAccountId: e.target.value})} required>
                                 <option value="">Select Target Account...</option>
                                 {accounts.filter(acc => acc.id !== formData.accountId).map(acc => <option key={acc.id} value={acc.id}>{acc.name}</option>)}
                             </select>
@@ -424,10 +507,10 @@ const Transactions: React.FC = () => {
                     )}
 
                     <div className="d-flex justify-content-end gap-2 pt-3 border-top">
-                        <button type="button" onClick={() => setIsFormModalOpen(false)} className="btn btn-light border">Cancel</button>
-                        <button type="submit" className="btn btn-primary d-flex align-items-center gap-2">
+                        <button type="button" onClick={() => setIsFormModalOpen(false)} className="btn btn-white border px-4 fw-bold shadow-sm" style={{borderRadius: '0.75rem'}}>Discard</button>
+                        <button type="submit" className="btn btn-black d-flex align-items-center gap-2 px-5 py-2 fw-900 shadow-lg" style={{borderRadius: '0.75rem'}}>
                             <Save size={18} />
-                            {editingTransaction ? 'Save Changes' : 'Record Transaction'}
+                            {editingTransaction ? 'Update Entry' : 'Record Entry'}
                         </button>
                     </div>
                 </form>
