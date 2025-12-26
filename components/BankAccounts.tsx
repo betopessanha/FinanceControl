@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import Card, { CardContent } from './ui/Card';
-import { BankAccount, BusinessEntity } from '../types';
+import { BankAccount, BusinessEntity, EntityType } from '../types';
 import { useData } from '../lib/DataContext';
 import { generateId, getTaxFormForStructure } from '../lib/utils';
 import { PlusCircle, Search, Edit2, Trash2, Wallet, Save, Building } from 'lucide-react';
@@ -46,13 +46,14 @@ const BankAccounts: React.FC = () => {
         setIsModalOpen(true);
     };
 
-    // Fix for missing handleSaveNewEntity from the original fragment logic
+    // Fixed: Property 'type' is missing in newEntity but required in BusinessEntity
     const handleSaveNewEntity = async () => {
         if(!entityForm.name) return;
         const newId = generateId();
         const newEntity: BusinessEntity = {
             id: newId,
             name: entityForm.name,
+            type: EntityType.BUSINESS,
             structure: entityForm.structure,
             taxForm: getTaxFormForStructure(entityForm.structure),
             ein: entityForm.ein

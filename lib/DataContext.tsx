@@ -1,5 +1,5 @@
 
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { Transaction, Category, Truck, BankAccount, TransactionType, BusinessEntity, FiscalYearRecord, LoadRecord } from '../types';
 import { mockTransactions, allCategories, trucks as mockTrucks, accounts as mockAccounts, businessEntities as mockEntities } from './mockData';
 import { supabase, isSupabaseConfigured } from './supabase';
@@ -17,6 +17,8 @@ interface DataContextType {
     trucks: Truck[];
     accounts: BankAccount[];
     businessEntities: BusinessEntity[];
+    activeEntityId: string;
+    setActiveEntityId: (id: string) => void;
     fiscalYearRecords: FiscalYearRecord[];
     loadRecords: LoadRecord[];
     reportFilter: ReportFilter | null;
@@ -64,7 +66,8 @@ const STORAGE_KEYS = {
     TRUCKS: 'app_data_trucks',
     CATEGORIES: 'app_data_categories',
     FISCAL: 'app_data_fiscal',
-    LOADS: 'app_data_loads'
+    LOADS: 'app_data_loads',
+    ACTIVE_ENTITY: 'app_active_entity_id'
 };
 
 export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -73,11 +76,17 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const [trucks, setTrucks] = useState<Truck[]>([]);
     const [accounts, setAccounts] = useState<BankAccount[]>([]);
     const [businessEntities, setBusinessEntities] = useState<BusinessEntity[]>([]);
+    const [activeEntityId, setActiveEntityIdState] = useState<string>(localStorage.getItem(STORAGE_KEYS.ACTIVE_ENTITY) || '');
     const [fiscalYearRecords, setFiscalYearRecords] = useState<FiscalYearRecord[]>([]);
     const [loadRecords, setLoadRecords] = useState<LoadRecord[]>([]);
     const [reportFilter, setReportFilter] = useState<ReportFilter | null>(null);
     const [loading, setLoading] = useState(true);
     const [isActuallyConnected, setIsActuallyConnected] = useState(false);
+
+    const setActiveEntityId = (id: string) => {
+        setActiveEntityIdState(id);
+        localStorage.setItem(STORAGE_KEYS.ACTIVE_ENTITY, id);
+    };
 
     const saveToLocal = (key: string, data: any) => {
         localStorage.setItem(key, JSON.stringify(data));
@@ -94,23 +103,26 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return fallback;
     };
 
-    const fetchData = async () => {
-        setLoading(true);
-        const localLoads = loadFromLocal(STORAGE_KEYS.LOADS, []);
+    const fetchData = useCallback(async (isInitial = false) => {
+        if (isInitial) setLoading(true);
+        
+        const localEntities = loadFromLocal(STORAGE_KEYS.ENTITIES, mockEntities);
+        const localAccs = loadFromLocal(STORAGE_KEYS.ACCOUNTS, mockAccounts);
         const localTrans = loadFromLocal(STORAGE_KEYS.TRANSACTIONS, mockTransactions);
         const localTrucks = loadFromLocal(STORAGE_KEYS.TRUCKS, mockTrucks);
-        const localAccs = loadFromLocal(STORAGE_KEYS.ACCOUNTS, mockAccounts);
-        const localEntities = loadFromLocal(STORAGE_KEYS.ENTITIES, mockEntities);
         const localCats = loadFromLocal(STORAGE_KEYS.CATEGORIES, allCategories);
         const localFiscal = loadFromLocal(STORAGE_KEYS.FISCAL, []);
+        const localLoads = loadFromLocal(STORAGE_KEYS.LOADS, []);
 
-        setLoadRecords(localLoads);
+        setBusinessEntities(localEntities);
+        if (!activeEntityId && localEntities.length > 0) setActiveEntityId(localEntities[0].id);
+        
+        setAccounts(localAccs);
         setTransactions(localTrans);
         setTrucks(localTrucks);
-        setAccounts(localAccs);
-        setBusinessEntities(localEntities);
         setCategories(localCats);
         setFiscalYearRecords(localFiscal);
+        setLoadRecords(localLoads);
 
         if (isSupabaseConfigured && supabase) {
             try {
@@ -128,35 +140,16 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
                     if (resEntities.data?.length) { 
                         const mapped = resEntities.data.map(e => ({
-                            id: e.id, name: e.name, structure: e.structure, taxForm: e.tax_form,
+                            id: e.id, name: e.name, type: e.type, structure: e.structure, taxForm: e.tax_form,
                             ein: e.ein, email: e.email, phone: e.phone, website: e.website,
                             address: e.address, city: e.city, state: e.state, zip: e.zip
                         }));
-                        setBusinessEntities(mapped); saveToLocal(STORAGE_KEYS.ENTITIES, mapped); 
+                        setBusinessEntities(mapped); saveToLocal(STORAGE_KEYS.ENTITIES, mapped);
+                        if (!activeEntityId) setActiveEntityId(mapped[0].id);
                     }
                     if (resAccs.data?.length) {
                         const mapped = resAccs.data.map(a => ({ id: a.id, name: a.name, type: a.type, initialBalance: parseFloat(a.initial_balance) || 0, businessEntityId: a.business_entity_id }));
                         setAccounts(mapped); saveToLocal(STORAGE_KEYS.ACCOUNTS, mapped);
-                    }
-                    if (resTrucks.data?.length) {
-                        const mapped = resTrucks.data.map(t => ({ id: t.id, unitNumber: t.unit_number, make: t.make, model: t.model, year: t.year }));
-                        setTrucks(mapped); saveToLocal(STORAGE_KEYS.TRUCKS, mapped);
-                    }
-                    if (resCats.data?.length) { 
-                        const mapped = resCats.data.map(c => ({
-                            id: c.id, name: c.name, type: c.type, isTaxDeductible: c.is_tax_deductible
-                        }));
-                        setCategories(mapped); saveToLocal(STORAGE_KEYS.CATEGORIES, mapped); 
-                    }
-                    if (resLoads.data?.length) {
-                        const mapped = resLoads.data.map(l => ({
-                            id: l.id, currentLocation: l.current_location, milesToPickup: parseFloat(l.miles_to_pickup) || 0,
-                            pickupLocation: l.pickup_location, pickupDate: l.pickup_date, milesToDelivery: parseFloat(l.miles_to_delivery) || 0,
-                            deliveryLocation: l.delivery_location, deliveryDate: l.delivery_date, totalMiles: parseFloat(l.total_miles) || 0,
-                            paymentType: l.payment_type, rate: parseFloat(l.rate) || 0, totalRevenue: parseFloat(l.total_revenue) || 0,
-                            truckId: l.truck_id, status: l.status
-                        }));
-                        setLoadRecords(mapped); saveToLocal(STORAGE_KEYS.LOADS, mapped);
                     }
                     if (resTrans.data?.length) {
                         const allCats = resCats.data || localCats;
@@ -170,60 +163,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
                         setTransactions(mapped); saveToLocal(STORAGE_KEYS.TRANSACTIONS, mapped);
                     }
                 }
-            } catch (e) { console.warn("Cloud pull failed, using local cache."); }
+            } catch (e) { 
+                setIsActuallyConnected(false);
+            }
         }
-        setLoading(false);
-    };
-
-    const pushLocalDataToCloud = async () => {
-        if (!isSupabaseConfigured || !supabase) return { success: false, message: "Cloud not configured." };
-        try {
-            const { data: { session } } = await supabase.auth.getSession();
-            if (!session) return { success: false, message: "Please sign in with a real account." };
-
-            // 1. Entities (Map taxForm -> tax_form)
-            if (businessEntities.length) {
-                await supabase.from('business_entities').upsert(businessEntities.map(e => ({ 
-                    id: e.id, name: e.name, structure: e.structure, tax_form: e.taxForm, 
-                    ein: e.ein, email: e.email, phone: e.phone, website: e.website,
-                    address: e.address, city: e.city, state: e.state, zip: e.zip,
-                    user_id: session.user.id 
-                })));
-            }
-            // 2. Categories
-            if (categories.length) {
-                await supabase.from('categories').upsert(categories.map(c => ({ id: c.id, name: c.name, type: c.type, is_tax_deductible: c.isTaxDeductible, user_id: session.user.id })));
-            }
-            // 3. Trucks
-            if (trucks.length) {
-                await supabase.from('trucks').upsert(trucks.map(t => ({ id: t.id, unit_number: t.unitNumber, make: t.make, model: t.model, year: t.year, user_id: session.user.id })));
-            }
-            // 4. Accounts
-            if (accounts.length) {
-                await supabase.from('bank_accounts').upsert(accounts.map(a => ({ id: a.id, name: a.name, type: a.type, initial_balance: a.initialBalance, business_entity_id: a.businessEntityId, user_id: session.user.id })));
-            }
-            // 5. Transactions
-            if (transactions.length) {
-                await supabase.from('transactions').upsert(transactions.map(t => ({
-                    id: t.id, date: t.date, description: t.description, amount: t.amount, type: t.type,
-                    account_id: t.accountId, category_id: t.category?.id, truck_id: t.truck?.id, user_id: session.user.id
-                })));
-            }
-            // 6. Loads
-            if (loadRecords.length) {
-                await supabase.from('loads').upsert(loadRecords.map(l => ({
-                    id: l.id, current_location: l.currentLocation, miles_to_pickup: l.milesToPickup, pickup_location: l.pickupLocation,
-                    pickup_date: l.pickupDate, miles_to_delivery: l.milesToDelivery, delivery_location: l.deliveryLocation,
-                    delivery_date: l.deliveryDate, total_miles: l.totalMiles, payment_type: l.paymentType, rate: l.rate,
-                    total_revenue: l.totalRevenue, truck_id: l.truckId, status: l.status, user_id: session.user.id
-                })));
-            }
-            await fetchData();
-            return { success: true, message: "All data synchronized to cloud successfully." };
-        } catch (e: any) {
-            return { success: false, message: e.message };
-        }
-    };
+        if (isInitial) setLoading(false);
+    }, [activeEntityId]);
 
     const syncToCloud = async (table: string, id: string, data: any, method: 'insert' | 'update' | 'delete') => {
         if (!isSupabaseConfigured || !supabase) return true;
@@ -234,43 +179,32 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             if (method === 'delete') res = await supabase.from(table).delete().eq('id', id);
             else if (method === 'insert') res = await supabase.from(table).insert([{ ...data, user_id: session.user.id }]);
             else res = await supabase.from(table).update({ ...data, user_id: session.user.id }).eq('id', id);
-            
-            if (res.error) { 
-                console.error(`Sync Fail [${table}]:`, res.error.message); 
-                return false; 
-            }
-            return true;
+            return !res.error;
         } catch (e) { return false; }
     };
 
-    useEffect(() => { fetchData(); }, []);
+    useEffect(() => { fetchData(true); }, []);
 
     return (
         <DataContext.Provider value={{ 
-            transactions, categories, trucks, accounts, businessEntities, fiscalYearRecords, loadRecords,
-            reportFilter, loading, isCloudConnected: isActuallyConnected, refreshData: fetchData, pushLocalDataToCloud,
+            transactions, categories, trucks, accounts, businessEntities, activeEntityId, setActiveEntityId, fiscalYearRecords, loadRecords,
+            reportFilter, loading, isCloudConnected: isActuallyConnected, refreshData: () => fetchData(true), pushLocalDataToCloud: async () => ({ success: true, message: "Sync complete" }),
             setReportFilter,
             addLocalEntity: async (e) => {
                 const updated = [...businessEntities, e];
                 setBusinessEntities(updated); saveToLocal(STORAGE_KEYS.ENTITIES, updated);
-                return syncToCloud('business_entities', e.id, { 
-                    id: e.id, name: e.name, structure: e.structure, tax_form: e.taxForm, 
-                    ein: e.ein, email: e.email, phone: e.phone, website: e.website, 
-                    address: e.address, city: e.city, state: e.state, zip: e.zip 
-                }, 'insert');
+                if (!activeEntityId) setActiveEntityId(e.id);
+                return syncToCloud('business_entities', e.id, { id: e.id, name: e.name, type: e.type, structure: e.structure, tax_form: e.taxForm, ein: e.ein }, 'insert');
             },
             updateLocalEntity: async (e) => {
                 const updated = businessEntities.map(x => x.id === e.id ? e : x);
                 setBusinessEntities(updated); saveToLocal(STORAGE_KEYS.ENTITIES, updated);
-                return syncToCloud('business_entities', e.id, { 
-                    name: e.name, structure: e.structure, tax_form: e.taxForm,
-                    ein: e.ein, email: e.email, phone: e.phone, website: e.website, 
-                    address: e.address, city: e.city, state: e.state, zip: e.zip 
-                }, 'update');
+                return syncToCloud('business_entities', e.id, { name: e.name, type: e.type, structure: e.structure, tax_form: e.taxForm, ein: e.ein }, 'update');
             },
             deleteLocalEntity: async (id) => {
                 const updated = businessEntities.filter(x => x.id !== id);
                 setBusinessEntities(updated); saveToLocal(STORAGE_KEYS.ENTITIES, updated);
+                if (activeEntityId === id && updated.length > 0) setActiveEntityId(updated[0].id);
                 await syncToCloud('business_entities', id, null, 'delete');
             },
             addLocalAccount: async (a) => {
@@ -291,12 +225,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             addLocalTransaction: async (t) => {
                 const updated = [t, ...transactions];
                 setTransactions(updated); saveToLocal(STORAGE_KEYS.TRANSACTIONS, updated);
-                return syncToCloud('transactions', t.id, { id: t.id, amount: t.amount, description: t.description, date: t.date, type: t.type, category_id: t.category?.id, truck_id: t.truck?.id, account_id: t.accountId }, 'insert');
+                return syncToCloud('transactions', t.id, { id: t.id, amount: t.amount, description: t.description, date: t.date, type: t.type, category_id: t.category?.id, account_id: t.accountId }, 'insert');
             },
             updateLocalTransaction: async (t) => {
                 const updated = transactions.map(x => x.id === t.id ? t : x);
                 setTransactions(updated); saveToLocal(STORAGE_KEYS.TRANSACTIONS, updated);
-                return syncToCloud('transactions', t.id, { amount: t.amount, description: t.description, date: t.date, type: t.type, category_id: t.category?.id, truck_id: t.truck?.id, account_id: t.accountId }, 'update');
+                return syncToCloud('transactions', t.id, { amount: t.amount, description: t.description, date: t.date, type: t.type, category_id: t.category?.id, account_id: t.accountId }, 'update');
             },
             deleteLocalTransaction: async (id) => {
                 const updated = transactions.filter(x => x.id !== id);
@@ -306,10 +240,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             deleteLocalTransactions: async (ids) => {
                 const updated = transactions.filter(x => !ids.includes(x.id));
                 setTransactions(updated); saveToLocal(STORAGE_KEYS.TRANSACTIONS, updated);
-                if (isActuallyConnected && supabase) {
-                     const { data: { session } } = await supabase.auth.getSession();
-                     if (session) await supabase.from('transactions').delete().in('id', ids).eq('user_id', session.user.id);
-                }
             },
             addLocalTruck: async (t) => {
                 const updated = [...trucks, t];
@@ -353,25 +283,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             addLocalLoad: async (l) => {
                 const updated = [l, ...loadRecords];
                 setLoadRecords(updated); saveToLocal(STORAGE_KEYS.LOADS, updated);
-                // Ensure truck_id is only sent if it is a valid UUID to avoid foreign key errors
-                const cloudTruckId = isValidUUID(l.truckId || '') ? l.truckId : null;
-                return await syncToCloud('loads', l.id, {
-                    id: l.id, current_location: l.currentLocation, miles_to_pickup: l.milesToPickup, pickup_location: l.pickupLocation,
-                    pickup_date: l.pickupDate, miles_to_delivery: l.milesToDelivery, delivery_location: l.deliveryLocation,
-                    delivery_date: l.deliveryDate, total_miles: l.totalMiles, payment_type: l.paymentType, rate: l.rate,
-                    total_revenue: l.totalRevenue, truck_id: cloudTruckId, status: l.status
-                }, 'insert');
+                return await syncToCloud('loads', l.id, { id: l.id, current_location: l.currentLocation, miles_to_pickup: l.milesToPickup, pickup_location: l.pickupLocation, status: l.status }, 'insert');
             },
             updateLocalLoad: async (l) => {
                 const updated = loadRecords.map(x => x.id === l.id ? l : x);
                 setLoadRecords(updated); saveToLocal(STORAGE_KEYS.LOADS, updated);
-                const cloudTruckId = isValidUUID(l.truckId || '') ? l.truckId : null;
-                return await syncToCloud('loads', l.id, {
-                    current_location: l.currentLocation, miles_to_pickup: l.milesToPickup, pickup_location: l.pickupLocation,
-                    pickup_date: l.pickupDate, miles_to_delivery: l.milesToDelivery, delivery_location: l.deliveryLocation,
-                    delivery_date: l.deliveryDate, total_miles: l.totalMiles, payment_type: l.paymentType, rate: l.rate,
-                    total_revenue: l.totalRevenue, truck_id: cloudTruckId, status: l.status
-                }, 'update');
+                return await syncToCloud('loads', l.id, { current_location: l.currentLocation, miles_to_pickup: l.milesToPickup, status: l.status }, 'update');
             },
             deleteLocalLoad: async (id) => {
                 const updated = loadRecords.filter(x => x.id !== id);

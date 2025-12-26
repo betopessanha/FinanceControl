@@ -1,8 +1,10 @@
 
-import React, { useState, useEffect } from 'react';
-import { LayoutDashboard, FileText, BarChart2, Truck, UserCircle, X, Tags, Landmark, CalendarRange, Wallet, LogOut, Settings as SettingsIcon, Building2, ChevronRight, Zap, Users, Map } from 'lucide-react';
+import React from 'react';
+import { LayoutDashboard, FileText, BarChart2, Truck, UserCircle, X, Tags, Landmark, CalendarRange, Wallet, LogOut, Settings as SettingsIcon, Building2, Zap, Users, Map, ChevronDown, User, Briefcase } from 'lucide-react';
 import { Page } from '../App';
 import { useAuth } from '../lib/AuthContext';
+import { useData } from '../lib/DataContext';
+import { EntityType } from '../types';
 
 interface SidebarProps {
   activePage: Page;
@@ -40,30 +42,21 @@ const NavItem: React.FC<{
       >
         <Icon className="me-3" size={18} />
         <span className="flex-grow-1">{displayLabel}</span>
-        {isActive && <div className="rounded-circle bg-white opacity-25" style={{width: 6, height: 6}}></div>}
       </a>
     </li>
   );
 };
 
-
 const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage, isOpen, setIsOpen }) => {
-  const { user, signOut } = useAuth();
+  const { signOut } = useAuth();
+  const { businessEntities, activeEntityId, setActiveEntityId } = useData();
   
   const handleNavigation = (page: Page) => {
     setActivePage(page);
     setIsOpen(false); 
   };
 
-  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
-
-  useEffect(() => {
-    const handleResize = () => {
-      setIsMobile(window.innerWidth < 768);
-    };
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
+  const activeEntity = businessEntities.find(e => e.id === activeEntityId) || businessEntities[0];
 
   return (
     <>
@@ -72,64 +65,67 @@ const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage, isOpen, se
       )}
 
       <aside className={`sidebar shadow-lg d-flex flex-column h-100 d-print-none ${isOpen ? 'show' : ''}`} style={{ zIndex: 2050 }}>
-        <div className="p-4 d-flex align-items-center justify-content-between">
-          <div className="d-flex align-items-center gap-3">
-            <div className="bg-black text-white p-2 rounded-3 d-flex align-items-center justify-content-center shadow-lg">
+        <div className="p-4">
+          <div className="d-flex align-items-center gap-3 mb-4">
+            <div className="bg-black text-white p-2 rounded-3 shadow-lg">
                 <Zap size={20} fill="white" />
             </div>
-            <h5 className="mb-0 fw-800 tracking-tight text-black">TRUCKING<span className="text-muted">.IO</span></h5>
+            <h5 className="mb-0 fw-800 tracking-tight text-black">FLEET<span className="text-muted">LEDGER</span></h5>
           </div>
-          <button className="btn btn-link text-dark p-0 d-md-none" onClick={() => setIsOpen(false)}><X size={24} /></button>
+
+          {/* Entity Selector (Global Context) */}
+          <div className="dropdown w-100 mb-2">
+            <button className="btn btn-white border w-100 d-flex align-items-center justify-content-between p-2 rounded-3 shadow-sm" type="button" data-bs-toggle="dropdown">
+              <div className="d-flex align-items-center gap-2 overflow-hidden">
+                <div className={`p-1 rounded-2 ${activeEntity?.type === EntityType.BUSINESS ? 'bg-dark text-white' : 'bg-primary text-white'}`}>
+                  {activeEntity?.type === EntityType.BUSINESS ? <Briefcase size={14}/> : <User size={14}/>}
+                </div>
+                <div className="text-start overflow-hidden">
+                  <div className="fw-800 small text-truncate" style={{maxWidth: '120px'}}>{activeEntity?.name}</div>
+                  <div className="text-muted" style={{fontSize: '0.6rem'}}>{activeEntity?.type}</div>
+                </div>
+              </div>
+              <ChevronDown size={14} className="text-muted" />
+            </button>
+            <ul className="dropdown-menu shadow-lg border-0 p-2 w-100">
+              {businessEntities.map(ent => (
+                <li key={ent.id}>
+                  <button className={`dropdown-item rounded-2 d-flex align-items-center gap-2 py-2 ${ent.id === activeEntityId ? 'bg-light fw-bold' : ''}`} onClick={() => setActiveEntityId(ent.id)}>
+                    {ent.type === EntityType.BUSINESS ? <Briefcase size={14}/> : <User size={14}/>}
+                    {ent.name}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
         </div>
 
         <div className="flex-grow-1 overflow-auto py-2">
-            <div className="px-4 mb-3"><small className="text-uppercase fw-800 text-muted" style={{fontSize: '0.65rem', letterSpacing: '0.1em'}}>Insights</small></div>
+            <div className="px-4 mb-2"><small className="text-uppercase fw-800 text-muted" style={{fontSize: '0.6rem', letterSpacing: '0.1em'}}>Reporting</small></div>
             <ul className="nav flex-column mb-4">
-              {['Dashboard', 'Transactions', 'Reports'].map((item) => (
-                <NavItem key={item} icon={item === 'Dashboard' ? LayoutDashboard : item === 'Transactions' ? FileText : BarChart2} label={item as Page} isActive={activePage === item} onClick={() => handleNavigation(item as Page)} />
+              {['Dashboard', 'Transactions', 'Reports', 'Tax'].map((item) => (
+                <NavItem 
+                  key={item} 
+                  icon={item === 'Dashboard' ? LayoutDashboard : item === 'Transactions' ? FileText : item === 'Reports' ? BarChart2 : Landmark} 
+                  label={item as Page} 
+                  isActive={activePage === item} 
+                  onClick={() => handleNavigation(item as Page)} 
+                />
               ))}
             </ul>
 
-            <div className="px-4 mb-3"><small className="text-uppercase fw-800 text-muted" style={{fontSize: '0.65rem', letterSpacing: '0.1em'}}>Fleet Operations</small></div>
+            <div className="px-4 mb-2"><small className="text-uppercase fw-800 text-muted" style={{fontSize: '0.6rem', letterSpacing: '0.1em'}}>Asset Management</small></div>
             <ul className="nav flex-column mb-4">
               {['Loads', 'Trucks', 'Accounts', 'Companies'].map((item) => (
                 <NavItem key={item} icon={item === 'Loads' ? Map : item === 'Trucks' ? Truck : item === 'Accounts' ? Wallet : Building2} label={item as Page} isActive={activePage === item} onClick={() => handleNavigation(item as Page)} />
               ))}
             </ul>
-
-            <div className="px-4 mb-3"><small className="text-uppercase fw-800 text-muted" style={{fontSize: '0.65rem', letterSpacing: '0.1em'}}>System</small></div>
-            <ul className="nav flex-column">
-              {['Tax', 'FiscalYears', 'Categories', 'Users', 'Settings'].map((item) => (
-                <NavItem 
-                    key={item} 
-                    icon={
-                        item === 'Tax' ? Landmark : 
-                        item === 'FiscalYears' ? CalendarRange : 
-                        item === 'Categories' ? Tags : 
-                        item === 'Users' ? Users : 
-                        SettingsIcon
-                    } 
-                    label={item as Page} 
-                    isActive={activePage === item} 
-                    onClick={() => handleNavigation(item as Page)} 
-                />
-              ))}
-            </ul>
         </div>
 
         <div className="p-4 mt-auto">
-            <div className="bg-subtle p-3 rounded-4 border">
-                <div className="d-flex align-items-center gap-3 mb-3">
-                    <div className="bg-black rounded-circle p-1" style={{cursor: 'pointer'}} onClick={() => handleNavigation('Profile')}><UserCircle className="text-white" size={24} /></div>
-                    <div className="overflow-hidden">
-                        <p className="fw-700 text-black mb-0 text-truncate small">{user?.email?.split('@')[0]}</p>
-                        <p className="text-muted mb-0 small" style={{fontSize: '0.7rem'}}>Administrator</p>
-                    </div>
-                </div>
-                <button onClick={() => signOut()} className="btn btn-sm btn-white w-100 border fw-bold text-danger d-flex align-items-center justify-content-center py-2 rounded-3">
-                    <LogOut size={14} className="me-2" /> Log Out
-                </button>
-            </div>
+            <button onClick={() => signOut()} className="btn btn-sm btn-white w-100 border fw-bold text-danger py-2 rounded-3 d-flex align-items-center justify-content-center gap-2">
+                <LogOut size={14} /> Log Out
+            </button>
         </div>
       </aside>
     </>

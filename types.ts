@@ -10,6 +10,11 @@ export enum PaymentType {
   FLAT_LOAD = 'Flat Load',
 }
 
+export enum EntityType {
+    BUSINESS = 'Business',
+    PERSONAL = 'Personal',
+}
+
 export interface Category {
   id: string;
   name: string;
@@ -31,14 +36,17 @@ export type LegalStructure =
     | 'LLC (Multi-Member)' 
     | 'S-Corp' 
     | 'C-Corp' 
-    | 'Partnership';
+    | 'Partnership'
+    | 'Individual / Owner';
 
 export interface BusinessEntity {
     id: string;
     name: string;
+    type: EntityType;
     structure: LegalStructure;
     taxForm: string;
     ein?: string;
+    ssn?: string; // For Personal
     email?: string;
     phone?: string;
     website?: string;

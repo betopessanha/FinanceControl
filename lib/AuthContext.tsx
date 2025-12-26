@@ -1,6 +1,6 @@
 
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { supabase, isSupabaseConfigured } from './supabase';
+import { supabase, isSupabaseConfigured, SYSTEM_KEYS } from './supabase';
 
 export type UserRole = 'admin' | 'user' | 'driver';
 
@@ -8,7 +8,7 @@ interface User {
     email: string;
     id: string;
     role: UserRole;
-    password?: string; // Only for local storage logic
+    password?: string;
 }
 
 interface AuthContextType {
@@ -41,11 +41,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 await supabase.auth.signOut();
             }
         } catch (e) {
-            console.error("Error signing out:", e);
+            console.error("Error signing out from cloud:", e);
         }
         setUser(null);
-        localStorage.removeItem('active_session_user');
-        // Clear Supabase specific keys to prevent refresh token errors
+        localStorage.removeItem(SYSTEM_KEYS.SESSION_USER);
+        // Remove apenas chaves de sessão do Supabase, não configurações do sistema
         for (const key in localStorage) {
             if (key.startsWith('sb-')) localStorage.removeItem(key);
         }
@@ -54,13 +54,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const updateLocalCredentials = (email: string, password: string) => {
         const localUsers = JSON.parse(localStorage.getItem('app_local_users') || '[]');
         const otherUsers = localUsers.filter((u: any) => u.id !== 'local-admin');
-        // Fix: Explicitly cast role to UserRole
         const newUser = { id: 'local-admin', email, password, role: 'admin' as UserRole };
         localStorage.setItem('app_local_users', JSON.stringify([...otherUsers, newUser]));
         
         if (user && user.id === 'local-admin') {
             setUser(newUser);
-            localStorage.setItem('active_session_user', JSON.stringify(newUser));
+            localStorage.setItem(SYSTEM_KEYS.SESSION_USER, JSON.stringify(newUser));
         }
     };
 
@@ -73,12 +72,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 if (!error && data.user) {
                     const cloudUser: User = { id: data.user.id, email: data.user.email || lowerEmail, role: 'admin' };
                     setUser(cloudUser);
-                    localStorage.setItem('active_session_user', JSON.stringify(cloudUser));
+                    localStorage.setItem(SYSTEM_KEYS.SESSION_USER, JSON.stringify(cloudUser));
                     return { error: null };
                 }
-                if (error) return { error: error.message };
+                // Se o erro for de conexão ou serviço, tenta o login local como fallback
+                if (error && !error.message.includes('Invalid login credentials')) {
+                    console.warn("Cloud auth error, attempting local fallback...");
+                } else if (error) {
+                    return { error: error.message };
+                }
             } catch (e: any) {
-                return { error: e.message || "Cloud authentication service unavailable." };
+                console.warn("Cloud service unavailable, using local fallback.");
             }
         } 
 
@@ -86,18 +90,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const found = localUsers.find((u: any) => u.email.toLowerCase() === lowerEmail && u.password === password);
         
         if (found) {
-            // Fix: Explicitly type sessionUser as User to ensure role is correctly assigned as UserRole
             const sessionUser: User = { id: found.id, email: found.email, role: found.role as UserRole };
             setUser(sessionUser);
-            localStorage.setItem('active_session_user', JSON.stringify(sessionUser));
+            localStorage.setItem(SYSTEM_KEYS.SESSION_USER, JSON.stringify(sessionUser));
             return { error: null };
         }
 
         if (lowerEmail === 'admin' && password === 'admin') {
-            // Fix: Explicitly type initialAdmin as User
             const initialAdmin: User = { id: 'local-admin', email: 'admin', role: 'admin' };
             setUser(initialAdmin);
-            localStorage.setItem('active_session_user', JSON.stringify(initialAdmin));
+            localStorage.setItem(SYSTEM_KEYS.SESSION_USER, JSON.stringify(initialAdmin));
             return { error: null };
         }
 
@@ -119,10 +121,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             if (localUsers.some((u: any) => u.email.toLowerCase() === lowerEmail)) {
                 return { error: "User already exists." };
             }
-            // Fix: Explicitly cast role to UserRole
             const newUser = { id: `local-${Date.now()}`, email: lowerEmail, password, role: 'admin' as UserRole };
             localStorage.setItem('app_local_users', JSON.stringify([...localUsers, newUser]));
-            return { error: null, message: "Local account created successfully. You can now log in." };
+            return { error: null, message: "Local account created successfully." };
         }
     };
 
@@ -130,31 +131,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const initAuth = async () => {
             setLoading(true);
             try {
-                // Check local session first
-                const stored = localStorage.getItem('active_session_user');
+                // 1. Recupera sessão local instantaneamente para evitar logoff visual
+                const stored = localStorage.getItem(SYSTEM_KEYS.SESSION_USER);
                 if (stored) {
-                    // Fix: Cast JSON.parse result to User
-                    setUser(JSON.parse(stored) as User);
+                    try {
+                        setUser(JSON.parse(stored) as User);
+                    } catch (e) {
+                        localStorage.removeItem(SYSTEM_KEYS.SESSION_USER);
+                    }
                 }
 
-                // If Supabase is active, check the actual cloud session
+                // 2. Valida com a nuvem em background se configurado
                 if (isSupabaseConfigured && supabase) {
                     const { data: { session }, error } = await supabase.auth.getSession();
                     
-                    // If there's a refresh token error, clear session
-                    if (error && (error.message.includes('Refresh Token') || error.status === 401)) {
-                        console.warn("Auth session expired or invalid. Clearing local state.");
-                        handleSignOut();
-                    } else if (session?.user) {
-                        // Fix: Explicitly type cloudUser as User
+                    if (session?.user) {
                         const cloudUser: User = { id: session.user.id, email: session.user.email || '', role: 'admin' };
                         setUser(cloudUser);
-                        localStorage.setItem('active_session_user', JSON.stringify(cloudUser));
+                        localStorage.setItem(SYSTEM_KEYS.SESSION_USER, JSON.stringify(cloudUser));
+                    } else if (error) {
+                        // Não desloga em erros de conexão, apenas se a sessão for explicitamente inválida
+                        if (error.status === 400 || error.status === 401) {
+                            console.warn("Session expired. Keeping local profile if available.");
+                        }
                     }
                 }
             } catch (e) {
-                console.error("Auth initialization failed:", e);
-                // Fail silently and let user log in again
+                console.error("Auth init error:", e);
             } finally {
                 setLoading(false);
             }

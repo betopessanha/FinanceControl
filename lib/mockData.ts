@@ -1,5 +1,5 @@
 
-import { Transaction, Category, Truck, TransactionType, BankAccount, BusinessEntity } from '../types';
+import { Transaction, Category, Truck, TransactionType, BankAccount, BusinessEntity, EntityType } from '../types';
 
 // Categorias Alinhadas com Schedule C (IRS)
 export const incomeCategories: Category[] = [
@@ -35,10 +35,12 @@ export const trucks: Truck[] = [
   { id: '660e8400-e29b-41d4-a716-446655440001', unitNumber: 'T-102', make: 'Kenworth', model: 'T680', year: 2021 },
 ];
 
+// Added missing 'type' property based on BusinessEntity interface
 export const businessEntities: BusinessEntity[] = [
     { 
         id: '770e8400-e29b-41d4-a716-446655440002', 
         name: 'My Trucking Company', 
+        type: EntityType.BUSINESS,
         structure: 'LLC (Single Member)', 
         taxForm: 'Schedule C (Form 1040)',
         ein: '00-0000000'
