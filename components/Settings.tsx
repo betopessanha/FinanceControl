@@ -45,8 +45,8 @@ const Settings: React.FC = () => {
         setIsSyncing(false);
     };
 
-    const schemaSQL = `-- TRUCKING.IO - USA ACCOUNTING ENGINE (v15)
--- FIX: user_id ALLOW NULL para permitir seeding via SQL Editor
+    const schemaSQL = `-- TRUCKING.IO - USA ACCOUNTING ENGINE (v16)
+-- CONSISTENCY UPDATE: All tables aligned with Loads RLS and structure
 
 -- 1. Limpeza
 DROP TABLE IF EXISTS public.transactions CASCADE;
@@ -56,7 +56,7 @@ DROP TABLE IF EXISTS public.business_entities CASCADE;
 DROP TABLE IF EXISTS public.trucks CASCADE;
 DROP TABLE IF EXISTS public.categories CASCADE;
 
--- 2. Estrutura (Removido NOT NULL de user_id para compatibilidade com Seeding Manual)
+-- 2. Estrutura
 CREATE TABLE public.business_entities (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID DEFAULT auth.uid(),
@@ -104,7 +104,7 @@ CREATE TABLE public.bank_accounts (
 );
 
 CREATE TABLE public.transactions (
-    id PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID DEFAULT auth.uid(),
     account_id UUID REFERENCES public.bank_accounts(id) ON DELETE CASCADE,
     category_id UUID REFERENCES public.categories(id) ON DELETE SET NULL,
@@ -137,7 +137,6 @@ CREATE TABLE public.loads (
 );
 
 -- 3. Inserção de Categorias Contábeis USA Padrão
--- Estas categorias ficarão com user_id NULL, tornando-as "globais" ou "sugeridas"
 INSERT INTO public.categories (name, type, is_tax_deductible) VALUES
 ('Freight Revenue', 'Income', false),
 ('Fuel Surcharge', 'Income', false),
@@ -162,7 +161,7 @@ INSERT INTO public.categories (name, type, is_tax_deductible) VALUES
 ('Loan Principal Payment', 'Expense', false),
 ('Personal Expenses', 'Expense', false);
 
--- 4. RLS
+-- 4. RLS Habilitação
 ALTER TABLE public.business_entities ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.categories ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.trucks ENABLE ROW LEVEL SECURITY;
@@ -170,18 +169,19 @@ ALTER TABLE public.bank_accounts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.transactions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.loads ENABLE ROW LEVEL SECURITY;
 
--- 5. Políticas (Permite ver itens com user_id NULL ou do próprio usuário)
+-- 5. Políticas Alinhadas (Own Data + NULL global access)
 DO $$ 
 DECLARE
     t text;
 BEGIN
     FOR t IN SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name IN ('business_entities', 'categories', 'trucks', 'bank_accounts', 'transactions', 'loads')
     LOOP
+        EXECUTE format('DROP POLICY IF EXISTS "FullAccess" ON public.%I', t);
         EXECUTE format('CREATE POLICY "FullAccess" ON public.%I FOR ALL USING (auth.uid() = user_id OR user_id IS NULL) WITH CHECK (auth.uid() = user_id)', t);
     END LOOP;
 END $$;
 
--- 6. Trigger (Garante que novos inserts via APP peguem o user_id do logado)
+-- 6. Triggers de Auto-Propriedade
 CREATE OR REPLACE FUNCTION public.set_user_id() RETURNS TRIGGER AS $$
 BEGIN
   IF NEW.user_id IS NULL THEN
@@ -197,6 +197,7 @@ DECLARE
 BEGIN
     FOR t IN SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name IN ('business_entities', 'categories', 'trucks', 'bank_accounts', 'transactions', 'loads')
     LOOP
+        EXECUTE format('DROP TRIGGER IF EXISTS tr_set_uid ON public.%I', t);
         EXECUTE format('CREATE TRIGGER tr_set_uid BEFORE INSERT ON public.%I FOR EACH ROW EXECUTE FUNCTION set_user_id()', t);
     END LOOP;
 END $$;
@@ -333,14 +334,14 @@ GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO authenticated;`;
                 </div>
             </div>
 
-            <Modal isOpen={showSchema} onClose={() => setShowSchema(false)} title="NUCLEAR RESET SQL (v15)" size="lg">
+            <Modal isOpen={showSchema} onClose={() => setShowSchema(false)} title="NUCLEAR RESET SQL (v16)" size="lg">
                 <div className="alert alert-danger small mb-3 shadow-sm border-0 d-flex align-items-start">
                     <AlertTriangle size={24} className="me-3 mt-1 flex-shrink-0" />
                     <div>
                         <h6 className="fw-bold mb-1">CUIDADO: ESTE SCRIPT APAGA TUDO</h6>
                         Para que o cadastro funcione, o Supabase precisa de uma estrutura limpa e do cache atualizado.
                         <ol className="ps-3 mt-2 mb-0">
-                            <li>Copie o script v15 abaixo (corrigido para Seeding).</li>
+                            <li>Copie o script v16 abaixo (corrigido e alinhado).</li>
                             <li>No Supabase, vá em <strong>SQL Editor</strong> e rode o script.</li>
                             <li><strong>PASSO CRÍTICO:</strong> Vá em <strong>Settings &gt; API &gt; PostgREST</strong> e clique no botão <strong>'Reload Schema Cache'</strong>. Sem isso, o Supabase continuará achando que as tabelas são as antigas.</li>
                         </ol>

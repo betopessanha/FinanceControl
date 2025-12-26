@@ -3,16 +3,12 @@ import React, { useState, useEffect, useMemo } from 'react';
 import Card, { CardContent } from './ui/Card';
 import { Transaction, TransactionType, Category, BankAccount } from '../types';
 import { formatCurrency, formatDate, downloadCSV, generateId } from '../lib/utils';
-import { PlusCircle, Search, Edit2, Loader2, Calendar, Wallet, Trash2, Save, Sparkles, Wand2 } from 'lucide-react';
+import { PlusCircle, Search, Edit2, Loader2, Calendar, Wallet, Trash2, Save, Sparkles, FileText, Check, AlertCircle, ArrowRight } from 'lucide-react';
 import Modal from './ui/Modal';
 import { useData } from '../lib/DataContext';
 import ExportMenu from './ui/ExportMenu';
 import { GoogleGenAI } from "@google/genai";
 
-/**
- * Transactions Ledger component for listing and managing financial movements.
- * Enhanced with Gemini AI Categorization.
- */
 const Transactions: React.FC = () => {
     const { 
         transactions, accounts, categories, loading, 
@@ -22,8 +18,14 @@ const Transactions: React.FC = () => {
     
     const [searchTerm, setSearchTerm] = useState('');
     const [isFormModalOpen, setIsFormModalOpen] = useState(false);
+    const [isImportModalOpen, setIsImportModalOpen] = useState(false);
     const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
+    
+    // AI States
     const [isAiSuggesting, setIsAiSuggesting] = useState(false);
+    const [isAiImporting, setIsAiImporting] = useState(false);
+    const [importText, setImportText] = useState('');
+    const [importPreview, setImportPreview] = useState<any[]>([]);
 
     const [formData, setFormData] = useState<Omit<Transaction, 'id'>>({
         date: new Date().toISOString().split('T')[0],
@@ -35,7 +37,6 @@ const Transactions: React.FC = () => {
         toAccountId: undefined
     });
 
-    // Handle incoming filters from other reports
     useEffect(() => {
         if (reportFilter && reportFilter.sourceReport) {
             setSearchTerm(reportFilter.sourceReport);
@@ -71,7 +72,6 @@ const Transactions: React.FC = () => {
 
     const handleSuggestCategory = async () => {
         if (!formData.description) return;
-        
         setIsAiSuggesting(true);
         try {
             const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
@@ -83,7 +83,7 @@ const Transactions: React.FC = () => {
             const prompt = `You are a professional US Trucking Accountant. 
             Based on the transaction description: "${formData.description}", 
             suggest the most appropriate accounting category from this list: [${catNames}]. 
-            Respond ONLY with a JSON object in this format: {"suggestedCategory": "Category Name", "reason": "brief reason"}`;
+            Respond ONLY with a JSON object: {"suggestedCategory": "Category Name"}`;
 
             const result = await ai.models.generateContent({
                 model: 'gemini-3-flash-preview',
@@ -97,14 +97,62 @@ const Transactions: React.FC = () => {
                 c.type === formData.type
             );
 
-            if (matchedCategory) {
-                setFormData(prev => ({ ...prev, category: matchedCategory }));
-            }
+            if (matchedCategory) setFormData(prev => ({ ...prev, category: matchedCategory }));
         } catch (error) {
             console.error("AI Categorization failed:", error);
         } finally {
             setIsAiSuggesting(false);
         }
+    };
+
+    const handleAiImport = async () => {
+        if (!importText || !formData.accountId) return;
+        setIsAiImporting(true);
+        try {
+            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+            const catList = categories.map(c => `${c.name} (${c.type})`).join(', ');
+            
+            const prompt = `Analyze this bank statement text and extract all financial transactions. 
+            Use these categories when possible: [${catList}].
+            Statement Text: "${importText}"
+            Return a JSON array of objects with exactly these keys: 
+            "date" (YYYY-MM-DD), "description", "amount" (number), "type" (Income or Expense), "categoryName" (string matched from list).`;
+
+            const result = await ai.models.generateContent({
+                model: 'gemini-3-flash-preview',
+                contents: prompt,
+                config: { responseMimeType: "application/json" }
+            });
+
+            const parsed = JSON.parse(result.text);
+            setImportPreview(parsed);
+        } catch (error) {
+            alert("Error parsing statement. Please try a cleaner text selection.");
+            console.error(error);
+        } finally {
+            setIsAiImporting(false);
+        }
+    };
+
+    const handleSaveImported = async () => {
+        setIsAiImporting(true);
+        for (const item of importPreview) {
+            const matchedCat = categories.find(c => c.name.toLowerCase() === item.categoryName?.toLowerCase());
+            const trans: Transaction = {
+                id: generateId(),
+                date: item.date,
+                description: item.description,
+                amount: Math.abs(item.amount),
+                type: item.type as TransactionType,
+                accountId: formData.accountId,
+                category: matchedCat
+            };
+            await addLocalTransaction(trans);
+        }
+        setIsAiImporting(false);
+        setIsImportModalOpen(false);
+        setImportPreview([]);
+        setImportText('');
     };
 
     const handleSaveTransaction = async (e: React.FormEvent) => {
@@ -113,12 +161,9 @@ const Transactions: React.FC = () => {
             id: editingTransaction ? editingTransaction.id : generateId(), 
             ...formData 
         };
-        
         if (editingTransaction) await updateLocalTransaction(fullTransactionObj);
         else await addLocalTransaction(fullTransactionObj);
-        
         setIsFormModalOpen(false);
-        setEditingTransaction(null);
     };
 
     const filteredTransactions = useMemo(() => {
@@ -140,9 +185,12 @@ const Transactions: React.FC = () => {
                     <p className="text-muted mb-0 small">Record and manage your fleet's financial movements.</p>
                 </div>
                 <div className="d-flex gap-2">
+                    <button onClick={() => setIsImportModalOpen(true)} className="btn btn-outline-primary d-flex align-items-center bg-white shadow-sm border">
+                        <Sparkles size={18} className="me-2 text-primary" /> AI Statement Import
+                    </button>
                     <ExportMenu data={filteredTransactions} filename="transactions" />
                     <button onClick={() => handleOpenModal()} className="btn btn-primary d-flex align-items-center shadow-sm">
-                        <PlusCircle size={18} className="me-2" /> Add Transaction
+                        <PlusCircle size={18} className="me-2" /> Add Entry
                     </button>
                 </div>
             </div>
@@ -220,6 +268,84 @@ const Transactions: React.FC = () => {
                 </CardContent>
             </Card>
 
+            {/* AI IMPORT MODAL */}
+            <Modal isOpen={isImportModalOpen} onClose={() => setIsImportModalOpen(false)} title="AI Bank Statement Import" size="lg">
+                <div className="mb-4">
+                    <label className="form-label fw-bold small text-muted">1. Select Target Account</label>
+                    <select className="form-select" value={formData.accountId} onChange={e => setFormData({...formData, accountId: e.target.value})}>
+                        <option value="">Select Account...</option>
+                        {accounts.map(acc => <option key={acc.id} value={acc.id}>{acc.name}</option>)}
+                    </select>
+                </div>
+
+                {importPreview.length === 0 ? (
+                    <div>
+                        <label className="form-label fw-bold small text-muted">2. Paste Statement Text</label>
+                        <textarea 
+                            className="form-control bg-light border-0 mb-3" 
+                            rows={8} 
+                            placeholder="Paste your bank transactions here (PDF copy/paste or CSV text)..."
+                            value={importText}
+                            onChange={(e) => setImportText(e.target.value)}
+                        ></textarea>
+                        <div className="d-flex justify-content-end">
+                            <button 
+                                onClick={handleAiImport} 
+                                disabled={isAiImporting || !importText || !formData.accountId}
+                                className="btn btn-primary px-4 d-flex align-items-center gap-2 shadow"
+                            >
+                                {isAiImporting ? <Loader2 size={18} className="animate-spin" /> : <Sparkles size={18} />}
+                                Analyze Statement with Gemini
+                            </button>
+                        </div>
+                    </div>
+                ) : (
+                    <div>
+                        <div className="d-flex justify-content-between align-items-center mb-3">
+                            <h6 className="fw-bold mb-0">Detected Transactions ({importPreview.length})</h6>
+                            <button className="btn btn-sm btn-link text-muted" onClick={() => setImportPreview([])}>Clear & Restart</button>
+                        </div>
+                        <div className="table-responsive rounded border mb-4" style={{maxHeight: '300px'}}>
+                            <table className="table table-sm align-middle mb-0">
+                                <thead className="bg-light sticky-top">
+                                    <tr>
+                                        <th className="ps-3 py-2 small fw-bold">Date</th>
+                                        <th className="py-2 small fw-bold">Description</th>
+                                        <th className="py-2 small fw-bold">Category</th>
+                                        <th className="pe-3 py-2 text-end small fw-bold">Amount</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {importPreview.map((item, idx) => (
+                                        <tr key={idx}>
+                                            <td className="ps-3 py-2 small">{item.date}</td>
+                                            <td className="py-2 small fw-bold text-truncate" style={{maxWidth: '150px'}}>{item.description}</td>
+                                            <td className="py-2">
+                                                <span className="badge bg-light text-dark border fw-normal">{item.categoryName || 'Misc'}</span>
+                                            </td>
+                                            <td className={`pe-3 py-2 text-end small fw-bold ${item.type === 'Income' ? 'text-success' : 'text-danger'}`}>
+                                                {formatCurrency(item.amount)}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                        <div className="alert alert-info d-flex align-items-center gap-2 py-2 small border-0 bg-opacity-10 mb-4">
+                            <Check size={16} className="text-info" />
+                            These transactions will be saved to the ledger and synced to cloud.
+                        </div>
+                        <div className="d-flex justify-content-end gap-2">
+                            <button className="btn btn-light" onClick={() => setIsImportModalOpen(false)}>Cancel</button>
+                            <button className="btn btn-success px-4 fw-bold shadow" onClick={handleSaveImported} disabled={isAiImporting}>
+                                {isAiImporting ? <Loader2 size={18} className="animate-spin" /> : 'Confirm & Save All'}
+                            </button>
+                        </div>
+                    </div>
+                )}
+            </Modal>
+
+            {/* STANDARD FORM MODAL */}
             <Modal isOpen={isFormModalOpen} onClose={() => setIsFormModalOpen(false)} title={editingTransaction ? "Edit Transaction" : "New Transaction"}>
                 <form onSubmit={handleSaveTransaction}>
                     <div className="mb-3">
