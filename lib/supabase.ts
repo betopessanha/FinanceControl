@@ -2,49 +2,85 @@
 import { createClient } from '@supabase/supabase-js';
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './env';
 
+// Chaves padronizadas para persistência do sistema
+export const SYSTEM_KEYS = {
+    DB_URL: 'trucking_sys_db_url',
+    DB_KEY: 'trucking_sys_db_key',
+};
+
+const getPersistedSetting = (key: string) => {
+    if (typeof window === 'undefined') return null;
+    return localStorage.getItem(key);
+};
+
 const fileUrl = SUPABASE_URL;
 const fileKey = SUPABASE_ANON_KEY;
 
-const localUrl = typeof window !== 'undefined' ? localStorage.getItem('custom_supabase_url') : null;
-const localKey = typeof window !== 'undefined' ? localStorage.getItem('custom_supabase_key') : null;
+const localUrl = getPersistedSetting(SYSTEM_KEYS.DB_URL);
+const localKey = getPersistedSetting(SYSTEM_KEYS.DB_KEY);
 
 const rawUrl = localUrl || fileUrl || "";
 const rawKey = localKey || fileKey || "";
 
-// Validation helpers
-export const isKeyLikelyStripe = (key: string) => key.startsWith('sb_publishable_') || key.startsWith('pk_');
-export const isKeyCorrectFormat = (key: string) => key.startsWith('eyJ');
-
-// Strictness relaxed: If user entered SOMETHING that looks like a URL and a long key, try it.
+// Validação rigorosa
 const isUrlValid = rawUrl && rawUrl.startsWith('https://') && rawUrl.includes('.supabase.co');
-const isKeyValid = rawKey && rawKey.length > 20;
+const isKeyValid = rawKey && rawKey.length > 20 && rawKey.startsWith('eyJ');
 
 export const isSupabaseConfigured = !!(isUrlValid && isKeyValid);
 
+/**
+ * Salva as configurações e força o recarregamento do estado global
+ */
 export const saveConnectionSettings = (url: string, key: string) => {
     if (typeof window !== 'undefined') {
-        localStorage.setItem('custom_supabase_url', url.trim());
-        localStorage.setItem('custom_supabase_key', key.trim());
-        // Clean reload to root
-        window.location.href = window.location.origin + window.location.pathname;
+        localStorage.setItem(SYSTEM_KEYS.DB_URL, url.trim());
+        localStorage.setItem(SYSTEM_KEYS.DB_KEY, key.trim());
+        // Recarrega a aplicação para reinicializar o cliente Supabase
+        window.location.reload();
     }
 };
 
+/**
+ * Limpa apenas as credenciais de nuvem
+ */
 export const clearConnectionSettings = () => {
     if (typeof window !== 'undefined') {
-        localStorage.removeItem('custom_supabase_url');
-        localStorage.removeItem('custom_supabase_key');
-        window.location.href = window.location.origin + window.location.pathname;
+        localStorage.removeItem(SYSTEM_KEYS.DB_URL);
+        localStorage.removeItem(SYSTEM_KEYS.DB_KEY);
+        window.location.reload();
     }
+};
+
+/**
+ * Gera uma string codificada para backup da configuração
+ */
+export const getExportableConfig = () => {
+    const url = localStorage.getItem(SYSTEM_KEYS.DB_URL) || "";
+    const key = localStorage.getItem(SYSTEM_KEYS.DB_KEY) || "";
+    if (!url || !key) return null;
+    return btoa(JSON.stringify({ url, key }));
+};
+
+/**
+ * Importa configuração a partir de uma string de backup
+ */
+export const importConfig = (encoded: string) => {
+    try {
+        const decoded = JSON.parse(atob(encoded));
+        if (decoded.url && decoded.key) {
+            saveConnectionSettings(decoded.url, decoded.key);
+            return true;
+        }
+    } catch (e) {
+        console.error("Invalid config string");
+    }
+    return false;
 };
 
 export const supabase = isSupabaseConfigured 
     ? createClient(rawUrl, rawKey) 
     : null;
 
-/**
- * Checks if there is an active session in Supabase Auth
- */
 export const hasActiveSupabaseSession = async (): Promise<boolean> => {
     if (!supabase) return false;
     const { data: { session } } = await supabase.auth.getSession();

@@ -1,14 +1,17 @@
 
 import React from 'react';
 
+// Added style property to the Card component's interface to support inline styles
 interface CardProps {
   children: React.ReactNode;
   className?: string;
+  style?: React.CSSProperties;
 }
 
-const Card: React.FC<CardProps> = ({ children, className = '' }) => {
+// Updated the Card component to apply the optional style prop to the wrapper div
+const Card: React.FC<CardProps> = ({ children, className = '', style }) => {
   return (
-    <div className={`card border-0 shadow-sm ${className}`}>
+    <div className={`card border-0 shadow-sm ${className}`} style={style}>
       {children}
     </div>
   );

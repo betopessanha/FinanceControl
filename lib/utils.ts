@@ -8,6 +8,13 @@ export const formatCurrency = (amount: number): string => {
   }).format(amount);
 };
 
+export const formatNumber = (num: number, decimals: number = 0): string => {
+  return new Intl.NumberFormat('en-US', {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  }).format(num);
+};
+
 export const formatDate = (isoString: string): string => {
   return new Date(isoString).toLocaleDateString('en-US', {
     year: 'numeric',

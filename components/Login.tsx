@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../lib/AuthContext';
-import { Truck, Lock, User, Loader2, AlertCircle, Database, WifiOff, Settings, RefreshCw, Eye, EyeOff, ShieldCheck, UserPlus, LogIn } from 'lucide-react';
-import { isSupabaseConfigured, clearConnectionSettings } from '../lib/supabase';
+import { Truck, Lock, User, Loader2, AlertCircle, Database, WifiOff, Settings, RefreshCw, Eye, EyeOff, ShieldCheck, UserPlus, LogIn, Download, Check } from 'lucide-react';
+import { isSupabaseConfigured, clearConnectionSettings, importConfig, SYSTEM_KEYS, saveConnectionSettings } from '../lib/supabase';
 import Modal from './ui/Modal';
 
 const Login: React.FC = () => {
@@ -16,7 +16,12 @@ const Login: React.FC = () => {
     const [error, setError] = useState<string | null>(null);
     const [successMessage, setSuccessMessage] = useState<string | null>(null);
     const [isConfigOpen, setIsConfigOpen] = useState(false);
-    const [attempts, setAttempts] = useState(0);
+    
+    // Config States
+    const [backupString, setBackupString] = useState('');
+    const [importSuccess, setImportSuccess] = useState(false);
+    const [manualUrl, setManualUrl] = useState('');
+    const [manualKey, setManualKey] = useState('');
 
     useEffect(() => {
         const savedUser = localStorage.getItem('remembered_user');
@@ -42,16 +47,11 @@ const Login: React.FC = () => {
                 setIsRegistering(false);
             }
         } else {
-            if (attempts >= 10) {
-                setError("Too many attempts. Locked for security.");
-                return;
-            }
             setIsLoading(true);
             const result = await signIn(email, password);
             if (result.error) {
                 setError(result.error);
                 setIsLoading(false);
-                setAttempts(prev => prev + 1);
             } else {
                 if (rememberMe) {
                     localStorage.setItem('remembered_user', email);
@@ -59,6 +59,25 @@ const Login: React.FC = () => {
                     localStorage.removeItem('remembered_user');
                 }
             }
+        }
+    };
+
+    const handleImportConfig = () => {
+        if (importConfig(backupString)) {
+            setImportSuccess(true);
+            setTimeout(() => {
+                setIsConfigOpen(false);
+                setImportSuccess(false);
+                setBackupString('');
+            }, 1000);
+        } else {
+            alert("Invalid backup string.");
+        }
+    };
+
+    const handleManualSave = () => {
+        if (manualUrl && manualKey) {
+            saveConnectionSettings(manualUrl, manualKey);
         }
     };
 
@@ -77,12 +96,9 @@ const Login: React.FC = () => {
                 </div>
 
                 <div className="card-body p-4 p-md-5">
-                    <div className={`alert ${isSupabaseConfigured ? 'alert-success' : 'alert-warning'} py-2 mb-4 bg-opacity-10 text-center border-0 small fw-bold`}>
-                        {isSupabaseConfigured ? (
-                            <><Database size={14} className="me-2 text-success" /> CLOUD BRIDGE ACTIVE</>
-                        ) : (
-                            <><WifiOff size={14} className="me-2 text-warning" /> LOCAL STORAGE MODE</>
-                        )}
+                    <div className={`alert ${isSupabaseConfigured ? 'alert-success' : 'alert-warning'} py-2 mb-4 bg-opacity-10 text-center border-0 small fw-bold d-flex align-items-center justify-content-center gap-2`}>
+                        {isSupabaseConfigured ? <Database size={14}/> : <WifiOff size={14}/>}
+                        {isSupabaseConfigured ? 'CLOUD ENGINE SAVED' : 'LOCAL ENGINE ONLY'}
                     </div>
 
                     {error && (
@@ -150,7 +166,7 @@ const Login: React.FC = () => {
                                     />
                                     <label className="form-check-label small text-muted cursor-pointer" htmlFor="rememberMe">Remember me</label>
                                 </div>
-                                <button type="button" onClick={() => setIsConfigOpen(true)} className="btn btn-link p-0 small text-decoration-none fw-bold">System Setup</button>
+                                <button type="button" onClick={() => setIsConfigOpen(true)} className="btn btn-link p-0 small text-decoration-none fw-bold">Cloud Setup</button>
                             </div>
                         )}
 
@@ -160,7 +176,7 @@ const Login: React.FC = () => {
                             disabled={isLoading}
                         >
                             {isLoading ? <Loader2 size={20} className="animate-spin" /> : (isRegistering ? <UserPlus size={20} /> : <LogIn size={20} />)}
-                            {isLoading ? 'Processing...' : (isRegistering ? 'Create Local Admin' : 'Sign In to System')}
+                            {isLoading ? 'Processing...' : (isRegistering ? 'Create Local Admin' : 'Sign In')}
                         </button>
                         
                         <div className="text-center mt-4">
@@ -176,24 +192,39 @@ const Login: React.FC = () => {
                 </div>
             </div>
 
-            <Modal isOpen={isConfigOpen} onClose={() => setIsConfigOpen(false)} title="System Configuration">
-                <p className="small text-muted mb-3">Database Bridge Parameters</p>
-                <div className="alert alert-info small py-3 mb-4">
-                    <div className="d-flex align-items-start">
-                        <Settings size={18} className="me-2 mt-1 flex-shrink-0" />
-                        <div>
-                            These settings control the cloud connection. If you wipe the cloud config, the system will return to Local Storage Mode.
-                        </div>
-                    </div>
-                </div>
-                
-                <div className="d-flex flex-column gap-2">
-                    <button className="btn btn-primary w-100 py-2 fw-bold" onClick={() => window.location.reload()}>Refresh System</button>
-                    {isSupabaseConfigured && (
-                        <button className="btn btn-outline-danger w-100 d-flex align-items-center justify-content-center gap-2" onClick={() => clearConnectionSettings()}>
-                            <RefreshCw size={16} /> Disconnect Cloud
+            <Modal isOpen={isConfigOpen} onClose={() => setIsConfigOpen(false)} title="System Infrastructure Configuration">
+                <div className="p-1">
+                    <label className="form-label fw-bold small text-muted text-uppercase mb-3">Option A: Import Connection String</label>
+                    <div className="input-group mb-4 shadow-sm">
+                        <input 
+                            type="text" 
+                            className="form-control bg-light border-0" 
+                            placeholder="Paste your backup config string..." 
+                            value={backupString}
+                            onChange={e => setBackupString(e.target.value)}
+                        />
+                        <button className="btn btn-primary px-3" onClick={handleImportConfig} disabled={!backupString || importSuccess}>
+                            {importSuccess ? <Check size={18}/> : <Download size={18}/>}
                         </button>
-                    )}
+                    </div>
+
+                    <hr className="my-4 opacity-10" />
+
+                    <label className="form-label fw-bold small text-muted text-uppercase mb-3">Option B: Manual Supabase Setup</label>
+                    <div className="mb-3">
+                        <input type="text" className="form-control mb-2" placeholder="Project URL (https://...)" value={manualUrl} onChange={e => setManualUrl(e.target.value)} />
+                        <input type="password"  className="form-control" placeholder="Anon Key (eyJ...)" value={manualKey} onChange={e => setManualKey(e.target.value)} />
+                    </div>
+                    
+                    <div className="d-flex gap-2 mt-4">
+                        <button className="btn btn-primary flex-grow-1 py-2 fw-bold" onClick={handleManualSave}>Save Configuration</button>
+                        {isSupabaseConfigured && (
+                            <button className="btn btn-outline-danger px-3" onClick={() => clearConnectionSettings()} title="Clear Cloud Config">
+                                <RefreshCw size={18} />
+                            </button>
+                        )}
+                    </div>
+                    <p className="text-muted small mt-3 mb-0 text-center">Configuring the cloud bridge allows real-time multi-device sync.</p>
                 </div>
             </Modal>
         </div>
