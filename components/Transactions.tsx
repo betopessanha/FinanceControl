@@ -98,7 +98,7 @@ const Transactions: React.FC = () => {
             <div className="d-flex flex-column flex-md-row justify-content-between align-items-md-center mb-5 gap-3">
                 <div>
                     <h1 className="fw-900 tracking-tight text-black mb-1">Financial Ledger</h1>
-                    <p className="text-muted mb-0 small">Modern bank-style audit for all your connected accounts.</p>
+                    <p className="text-muted mb-0 small">Audit trail for all business and personal accounts.</p>
                 </div>
                 <div className="d-flex gap-2">
                     <button onClick={() => setIsImportModalOpen(true)} className="btn btn-white border shadow-sm px-3 fw-bold d-flex align-items-center gap-2">
@@ -180,66 +180,82 @@ const Transactions: React.FC = () => {
                             <thead className="bg-light bg-opacity-50">
                                 <tr>
                                     <th className="ps-4 py-3 border-0 text-muted small fw-800 text-uppercase">Date</th>
-                                    <th className="py-3 border-0 text-muted small fw-800 text-uppercase">Description / Vendor</th>
+                                    <th className="py-3 border-0 text-muted small fw-800 text-uppercase">Description</th>
                                     <th className="py-3 border-0 text-muted small fw-800 text-uppercase">Category</th>
-                                    <th className="py-3 border-0 text-muted small fw-800 text-uppercase">Source / Movement</th>
+                                    <th className="py-3 border-0 text-muted small fw-800 text-uppercase">Account Perspective</th>
                                     <th className="py-3 border-0 text-muted small fw-800 text-uppercase text-end">Amount</th>
                                     <th className="pe-4 py-3 border-0 text-muted small fw-800 text-uppercase text-center">Action</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                {filteredTransactions.length > 0 ? filteredTransactions.map(t => (
-                                    <tr key={t.id} className="border-bottom border-light">
-                                        <td className="ps-4 py-4">
-                                            <span className="text-muted fw-bold small">{formatDate(t.date)}</span>
-                                        </td>
-                                        <td className="py-4">
-                                            <div className="d-flex align-items-center gap-3">
-                                                <div className={`p-2 rounded-circle ${
-                                                    t.type === TransactionType.INCOME ? 'bg-success bg-opacity-10 text-success' : 
-                                                    t.type === TransactionType.TRANSFER ? 'bg-primary bg-opacity-10 text-primary' :
-                                                    'bg-danger bg-opacity-10 text-danger'
+                                {filteredTransactions.length > 0 ? filteredTransactions.map(t => {
+                                    // Logic for perspective-aware transfers
+                                    let isTransferIn = false;
+                                    let isTransferOut = false;
+                                    
+                                    if (t.type === TransactionType.TRANSFER && filterAccountId !== '') {
+                                        if (t.toAccountId === filterAccountId) isTransferIn = true;
+                                        if (t.accountId === filterAccountId) isTransferOut = true;
+                                    }
+
+                                    const displayAsPositive = t.type === TransactionType.INCOME || isTransferIn;
+                                    const displayAsNegative = t.type === TransactionType.EXPENSE || isTransferOut;
+
+                                    return (
+                                        <tr key={t.id} className="border-bottom border-light">
+                                            <td className="ps-4 py-4">
+                                                <span className="text-muted fw-bold small">{formatDate(t.date)}</span>
+                                            </td>
+                                            <td className="py-4">
+                                                <div className="d-flex align-items-center gap-3">
+                                                    <div className={`p-2 rounded-circle ${
+                                                        displayAsPositive ? 'bg-success bg-opacity-10 text-success' : 
+                                                        t.type === TransactionType.TRANSFER ? 'bg-primary bg-opacity-10 text-primary' :
+                                                        'bg-danger bg-opacity-10 text-danger'
+                                                    }`}>
+                                                        {displayAsPositive ? <ArrowUpRight size={16}/> : 
+                                                         t.type === TransactionType.TRANSFER ? <ArrowRightLeft size={16}/> : 
+                                                         <ArrowDownRight size={16}/>}
+                                                    </div>
+                                                    <span className="fw-800 text-dark">{t.description}</span>
+                                                </div>
+                                            </td>
+                                            <td className="py-4">
+                                                <div className="d-flex align-items-center gap-2">
+                                                    <Tag size={12} className="text-muted" />
+                                                    <span className="fw-bold text-muted small">
+                                                        {t.category?.name || (t.type === TransactionType.TRANSFER ? 'Internal Transfer' : 'Uncategorized')}
+                                                    </span>
+                                                </div>
+                                            </td>
+                                            <td className="py-4">
+                                                <div className="d-flex align-items-center gap-2">
+                                                    <Wallet size={12} className="text-muted" />
+                                                    <div className="d-flex flex-column">
+                                                        <span className="fw-bold text-muted small">{accounts.find(a => a.id === t.accountId)?.name}</span>
+                                                        {t.type === TransactionType.TRANSFER && t.toAccountId && (
+                                                            <span className="text-primary fw-bold" style={{fontSize: '0.65rem'}}>
+                                                                → {accounts.find(a => a.id === t.toAccountId)?.name}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td className="py-4 text-end">
+                                                <span className={`fw-900 fs-6 ${
+                                                    displayAsPositive ? 'text-success' : 
+                                                    (t.type === TransactionType.TRANSFER && !hasActiveFilters) ? 'text-primary' : 
+                                                    'text-black'
                                                 }`}>
-                                                    {t.type === TransactionType.INCOME ? <ArrowUpRight size={16}/> : 
-                                                     t.type === TransactionType.TRANSFER ? <ArrowRightLeft size={16}/> : 
-                                                     <ArrowDownRight size={16}/>}
-                                                </div>
-                                                <span className="fw-800 text-dark">{t.description}</span>
-                                            </div>
-                                        </td>
-                                        <td className="py-4">
-                                            <div className="d-flex align-items-center gap-2">
-                                                <Tag size={12} className="text-muted" />
-                                                <span className="fw-bold text-muted small">{t.category?.name || (t.type === TransactionType.TRANSFER ? 'Internal Transfer' : 'Uncategorized')}</span>
-                                            </div>
-                                        </td>
-                                        <td className="py-4">
-                                            <div className="d-flex align-items-center gap-2">
-                                                <Wallet size={12} className="text-muted" />
-                                                <div className="d-flex flex-column">
-                                                    <span className="fw-bold text-muted small">{accounts.find(a => a.id === t.accountId)?.name}</span>
-                                                    {t.type === TransactionType.TRANSFER && t.toAccountId && (
-                                                        <span className="text-muted fw-bold" style={{fontSize: '0.65rem'}}>
-                                                            → {accounts.find(a => a.id === t.toAccountId)?.name}
-                                                        </span>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        </td>
-                                        <td className="py-4 text-end">
-                                            <span className={`fw-900 fs-6 ${
-                                                t.type === TransactionType.INCOME ? 'text-success' : 
-                                                t.type === TransactionType.TRANSFER ? 'text-primary' : 
-                                                'text-black'
-                                            }`}>
-                                                {t.type === TransactionType.INCOME ? '+' : t.type === TransactionType.TRANSFER ? '⇅' : '-'} {formatCurrency(t.amount)}
-                                            </span>
-                                        </td>
-                                        <td className="pe-4 py-4 text-center">
-                                            <button onClick={() => handleOpenModal(t)} className="btn btn-sm btn-white border-0 shadow-none"><Edit2 size={16} className="text-muted"/></button>
-                                        </td>
-                                    </tr>
-                                )) : (
+                                                    {displayAsPositive ? '+' : '-'} {formatCurrency(t.amount)}
+                                                </span>
+                                            </td>
+                                            <td className="pe-4 py-4 text-center">
+                                                <button onClick={() => handleOpenModal(t)} className="btn btn-sm btn-white border-0 shadow-none"><Edit2 size={16} className="text-muted"/></button>
+                                            </td>
+                                        </tr>
+                                    );
+                                }) : (
                                     <tr>
                                         <td colSpan={6} className="py-5 text-center text-muted">
                                             <div className="py-4">
