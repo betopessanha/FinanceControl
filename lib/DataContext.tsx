@@ -241,6 +241,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             deleteLocalTransactions: async (ids) => {
                 const updated = transactions.filter(x => !ids.includes(x.id));
                 setTransactions(updated); saveToLocal(STORAGE_KEYS.TRANSACTIONS, updated);
+                if (isActuallyConnected && supabase) {
+                    for (const id of ids) {
+                        await syncToCloud('transactions', id, null, 'delete');
+                    }
+                }
             },
             addLocalTruck: async (t) => {
                 const updated = [...trucks, t];

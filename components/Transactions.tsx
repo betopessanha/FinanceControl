@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import Card, { CardContent } from './ui/Card';
 import { Transaction, TransactionType, Category, BankAccount } from '../types';
 import { formatCurrency, formatDate, downloadCSV, generateId, downloadImportTemplate } from '../lib/utils';
-import { PlusCircle, Search, Edit2, Loader2, Calendar, Wallet, Trash2, Save, Sparkles, FileText, Check, AlertCircle, ArrowRight, Download, Upload, FileJson, Info, ArrowUpRight, ArrowDownRight, Tag, ArrowRightLeft, X, Filter } from 'lucide-react';
+import { PlusCircle, Search, Edit2, Loader2, Calendar, Wallet, Trash2, Save, Sparkles, FileText, Check, AlertCircle, ArrowRight, Download, Upload, FileJson, Info, ArrowUpRight, ArrowDownRight, Tag, ArrowRightLeft, X, Filter, CheckSquare, Square, Trash } from 'lucide-react';
 import Modal from './ui/Modal';
 import { useData } from '../lib/DataContext';
 import ExportMenu from './ui/ExportMenu';
@@ -12,7 +12,7 @@ import { GoogleGenAI } from "@google/genai";
 const Transactions: React.FC = () => {
     const { 
         transactions, accounts, categories, loading, 
-        addLocalTransaction, updateLocalTransaction, deleteLocalTransaction
+        addLocalTransaction, updateLocalTransaction, deleteLocalTransaction, deleteLocalTransactions
     } = useData();
     
     const [searchTerm, setSearchTerm] = useState('');
@@ -24,6 +24,9 @@ const Transactions: React.FC = () => {
     const [isImportModalOpen, setIsImportModalOpen] = useState(false);
     const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
 
+    // Bulk selection state
+    const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
     const [formData, setFormData] = useState<Omit<Transaction, 'id'>>({
         date: new Date().toISOString().split('T')[0],
         description: '',
@@ -34,6 +37,22 @@ const Transactions: React.FC = () => {
         toCategory: undefined,
         toAccountId: undefined
     });
+
+    const filteredTransactions = useMemo(() => {
+        return transactions.filter(t => {
+            const matchesSearch = t.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                                 t.category?.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                                 t.toCategory?.name.toLowerCase().includes(searchTerm.toLowerCase());
+            
+            const matchesAccount = filterAccountId === '' || t.accountId === filterAccountId || t.toAccountId === filterAccountId;
+            
+            const transDate = t.date.split('T')[0];
+            const matchesStart = startDate === '' || transDate >= startDate;
+            const matchesEnd = endDate === '' || transDate <= endDate;
+
+            return matchesSearch && matchesAccount && matchesStart && matchesEnd;
+        });
+    }, [transactions, searchTerm, filterAccountId, startDate, endDate]);
 
     const handleOpenModal = (transaction?: Transaction) => {
         if (transaction) {
@@ -77,28 +96,38 @@ const Transactions: React.FC = () => {
         setStartDate('');
         setEndDate('');
         setFilterAccountId('');
+        setSelectedIds(new Set());
     };
 
-    const filteredTransactions = useMemo(() => {
-        return transactions.filter(t => {
-            const matchesSearch = t.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                                 t.category?.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                                 t.toCategory?.name.toLowerCase().includes(searchTerm.toLowerCase());
-            
-            const matchesAccount = filterAccountId === '' || t.accountId === filterAccountId || t.toAccountId === filterAccountId;
-            
-            const transDate = t.date.split('T')[0];
-            const matchesStart = startDate === '' || transDate >= startDate;
-            const matchesEnd = endDate === '' || transDate <= endDate;
+    // Bulk Actions logic
+    const toggleSelectOne = (id: string) => {
+        const next = new Set(selectedIds);
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+        setSelectedIds(next);
+    };
 
-            return matchesSearch && matchesAccount && matchesStart && matchesEnd;
-        });
-    }, [transactions, searchTerm, filterAccountId, startDate, endDate]);
+    const toggleSelectAll = () => {
+        if (selectedIds.size > 0) {
+            setSelectedIds(new Set());
+        } else {
+            setSelectedIds(new Set(filteredTransactions.map(t => t.id)));
+        }
+    };
+
+    const handleBulkDelete = async () => {
+        const count = selectedIds.size;
+        if (confirm(`Are you sure you want to delete ${count} selected transaction(s)? This action cannot be undone.`)) {
+            const idsToDelete = Array.from(selectedIds);
+            await deleteLocalTransactions(idsToDelete);
+            setSelectedIds(new Set());
+        }
+    };
 
     const hasActiveFilters = searchTerm !== '' || startDate !== '' || endDate !== '' || filterAccountId !== '';
 
     return (
-        <div className="container-fluid py-2 animate-slide-up">
+        <div className="container-fluid py-2 animate-slide-up position-relative">
             <div className="d-flex flex-column flex-md-row justify-content-between align-items-md-center mb-5 gap-3">
                 <div>
                     <h1 className="fw-900 tracking-tight text-black mb-1">Financial Ledger</h1>
@@ -114,7 +143,7 @@ const Transactions: React.FC = () => {
                 </div>
             </div>
 
-            <Card className="border-0 shadow-sm overflow-hidden">
+            <Card className="border-0 shadow-sm overflow-hidden mb-5">
                 <CardContent className="p-0">
                     <div className="p-4 bg-white border-bottom">
                         <div className="row g-3 align-items-end">
@@ -183,7 +212,18 @@ const Transactions: React.FC = () => {
                         <table className="table table-hover align-middle mb-0">
                             <thead className="bg-light bg-opacity-50">
                                 <tr>
-                                    <th className="ps-4 py-3 border-0 text-muted small fw-800 text-uppercase">Date</th>
+                                    <th className="ps-4 py-3 border-0" style={{ width: '40px' }}>
+                                        <div className="form-check m-0">
+                                            <input 
+                                                className="form-check-input shadow-none cursor-pointer" 
+                                                type="checkbox" 
+                                                checked={selectedIds.size > 0 && selectedIds.size === filteredTransactions.length}
+                                                ref={el => el && (el.indeterminate = selectedIds.size > 0 && selectedIds.size < filteredTransactions.length)}
+                                                onChange={toggleSelectAll}
+                                            />
+                                        </div>
+                                    </th>
+                                    <th className="py-3 border-0 text-muted small fw-800 text-uppercase">Date</th>
                                     <th className="py-3 border-0 text-muted small fw-800 text-uppercase">Description</th>
                                     <th className="py-3 border-0 text-muted small fw-800 text-uppercase">Category</th>
                                     <th className="py-3 border-0 text-muted small fw-800 text-uppercase">Account Perspective</th>
@@ -193,7 +233,6 @@ const Transactions: React.FC = () => {
                             </thead>
                             <tbody>
                                 {filteredTransactions.length > 0 ? filteredTransactions.map(t => {
-                                    // Logic for perspective-aware transfers
                                     let isTransferIn = false;
                                     let isTransferOut = false;
                                     
@@ -204,10 +243,21 @@ const Transactions: React.FC = () => {
 
                                     const displayAsPositive = t.type === TransactionType.INCOME || isTransferIn;
                                     const displayAsNegative = t.type === TransactionType.EXPENSE || isTransferOut;
+                                    const isSelected = selectedIds.has(t.id);
 
                                     return (
-                                        <tr key={t.id} className="border-bottom border-light">
+                                        <tr key={t.id} className={`border-bottom border-light transition-all ${isSelected ? 'bg-primary bg-opacity-5' : ''}`}>
                                             <td className="ps-4 py-4">
+                                                <div className="form-check m-0">
+                                                    <input 
+                                                        className="form-check-input shadow-none cursor-pointer" 
+                                                        type="checkbox" 
+                                                        checked={isSelected}
+                                                        onChange={() => toggleSelectOne(t.id)}
+                                                    />
+                                                </div>
+                                            </td>
+                                            <td className="py-4">
                                                 <span className="text-muted fw-bold small">{formatDate(t.date)}</span>
                                             </td>
                                             <td className="py-4">
@@ -268,7 +318,7 @@ const Transactions: React.FC = () => {
                                     );
                                 }) : (
                                     <tr>
-                                        <td colSpan={6} className="py-5 text-center text-muted">
+                                        <td colSpan={7} className="py-5 text-center text-muted">
                                             <div className="py-4">
                                                 <Filter size={48} className="mb-3 opacity-10" />
                                                 <h6 className="fw-bold">No results found</h6>
@@ -285,6 +335,26 @@ const Transactions: React.FC = () => {
                     </div>
                 </CardContent>
             </Card>
+
+            {/* Floating Bulk Action Bar */}
+            {selectedIds.size > 0 && (
+                <div className="position-fixed bottom-0 start-50 translate-middle-x mb-4 animate-slide-up" style={{ zIndex: 1050 }}>
+                    <div className="bg-black text-white px-4 py-3 rounded-pill shadow-lg d-flex align-items-center gap-4 border border-white border-opacity-10" style={{ backdropFilter: 'blur(10px)', backgroundColor: 'rgba(0,0,0,0.85)' }}>
+                        <div className="d-flex align-items-center gap-2 border-end border-white border-opacity-10 pe-4">
+                            <CheckSquare size={18} className="text-primary" />
+                            <span className="fw-900 small">{selectedIds.size} SELECTED</span>
+                        </div>
+                        <div className="d-flex align-items-center gap-2">
+                            <button onClick={handleBulkDelete} className="btn btn-link text-danger p-0 fw-800 small text-decoration-none d-flex align-items-center gap-2">
+                                <Trash2 size={16} /> DELETE
+                            </button>
+                            <button onClick={() => setSelectedIds(new Set())} className="btn btn-link text-white p-0 fw-800 small text-decoration-none opacity-50 ms-3">
+                                CANCEL
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             <Modal isOpen={isFormModalOpen} onClose={() => setIsFormModalOpen(false)} title={editingTransaction ? "Edit Record" : "New Transaction"}>
                 <form onSubmit={handleSaveTransaction}>
