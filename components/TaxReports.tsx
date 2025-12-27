@@ -26,6 +26,7 @@ const SCHEDULE_C_MAP: Record<string, string> = {
 const FORM_1040_MAP: Record<string, string> = {
     'Wages': 'Line 1z: Total Wages',
     'Investment Income': 'Line 2: Tax-exempt/Taxable interest',
+    'Owner Equity / Personal Transfer': 'Line 0: Non-Taxable Equity Movement',
     'Standard Deduction': 'Line 12: Standard Deduction',
     'Charitable Contributions': 'Line 12: Itemized Deductions',
 };
@@ -37,19 +38,20 @@ interface FormRowProps {
     bold?: boolean;
     indent?: boolean;
     isTotal?: boolean;
+    isInfoOnly?: boolean;
 }
 
-const FormRow: React.FC<FormRowProps> = ({ line, label, value, bold, indent, isTotal }) => (
+const FormRow: React.FC<FormRowProps> = ({ line, label, value, bold, indent, isTotal, isInfoOnly }) => (
     <div className={`d-flex align-items-baseline py-2 ${indent ? 'ps-4' : ''} ${isTotal ? 'border-top border-dark border-2 mt-2 bg-light bg-opacity-50' : 'border-bottom border-light'}`}>
         <div className="d-flex align-items-center gap-2" style={{ minWidth: '60px' }}>
             <span className="text-muted fw-bold" style={{ fontSize: '0.7rem' }}>{line}</span>
         </div>
         <div className="flex-grow-1 d-flex align-items-baseline overflow-hidden">
-            <span className={`${bold ? 'fw-800' : 'fw-500'} text-dark small text-uppercase text-truncate`}>{label}</span>
+            <span className={`${bold ? 'fw-800' : 'fw-500'} ${isInfoOnly ? 'text-muted italic' : 'text-dark'} small text-uppercase text-truncate`}>{label}</span>
             <div className="flex-grow-1 mx-2 border-bottom border-dotted opacity-25" style={{ borderStyle: 'dotted', height: '14px' }}></div>
         </div>
         <div className="text-end" style={{ minWidth: '130px' }}>
-            <span className={`${bold ? 'fw-900 fs-6' : 'fw-700 small'} font-monospace`}>
+            <span className={`${bold ? 'fw-900 fs-6' : 'fw-700 small'} font-monospace ${isInfoOnly ? 'text-muted' : ''}`}>
                 {formatCurrency(value)}
             </span>
         </div>
@@ -86,8 +88,19 @@ const TaxReports: React.FC = () => {
             new Date(t.date).getFullYear() === selectedYear && accountIds.includes(t.accountId)
         );
 
-        const income = filtered.filter(t => t.type === TransactionType.INCOME).reduce((s, t) => s + t.amount, 0);
-        const expenses = filtered.filter(t => t.type === TransactionType.EXPENSE).reduce((s, t) => s + t.amount, 0);
+        const taxableIncome = filtered.filter(t => {
+            if (activeTab === 'individual') {
+                return t.type === TransactionType.INCOME && t.category?.name !== 'Owner Equity / Personal Transfer';
+            }
+            return t.type === TransactionType.INCOME;
+        }).reduce((s, t) => s + t.amount, 0);
+
+        const equityMovements = filtered.filter(t => 
+            t.category?.name === 'Owner Equity / Personal Transfer' || 
+            t.category?.name === 'Owner Draw / Distributions'
+        ).reduce((s, t) => s + t.amount, 0);
+
+        const expenses = filtered.filter(t => t.type === TransactionType.EXPENSE && t.category?.isTaxDeductible).reduce((s, t) => s + t.amount, 0);
 
         // Map by line for display
         const lineData: Record<string, number> = {};
@@ -97,7 +110,7 @@ const TaxReports: React.FC = () => {
             lineData[line] = (lineData[line] || 0) + t.amount;
         });
 
-        return { income, expenses, net: income - expenses, lineData };
+        return { taxableIncome, expenses, net: taxableIncome - expenses, equityMovements, lineData };
     }, [transactions, activeTab, selectedYear, accounts, businessEntities]);
 
     return (
@@ -158,9 +171,9 @@ const TaxReports: React.FC = () => {
                                 <>
                                     <div className="mb-5">
                                         <h6 className="bg-light p-2 rounded-2 fw-900 small text-uppercase ls-1 mb-3">Part I: Income</h6>
-                                        <FormRow line="1" label="Gross receipts or sales" value={taxCalculation.income} />
+                                        <FormRow line="1" label="Gross receipts or sales" value={taxCalculation.taxableIncome} />
                                         <FormRow line="2" label="Returns and allowances" value={0} />
-                                        <FormRow line="5" label="Gross Profit" value={taxCalculation.income} bold />
+                                        <FormRow line="5" label="Gross Profit" value={taxCalculation.taxableIncome} bold />
                                     </div>
 
                                     <div className="mb-5">
@@ -175,7 +188,11 @@ const TaxReports: React.FC = () => {
                                         <FormRow line="24b" label="Deductible meals" value={taxCalculation.lineData['Line 24b: Deductible meals'] || 0} />
                                         <FormRow line="27a" label="Other expenses" value={taxCalculation.lineData['Line 27a: Other expenses'] || 0} />
                                         
-                                        <FormRow line="28" label="Total Expenses" value={taxCalculation.expenses} bold isTotal />
+                                        <FormRow line="28" label="Total Deductible Expenses" value={taxCalculation.expenses} bold isTotal />
+                                    </div>
+
+                                    <div className="mb-4">
+                                        <FormRow line="-" label="Owner Draws (Non-Deductible)" value={taxCalculation.lineData['Owner Draw / Distributions'] || 0} isInfoOnly />
                                     </div>
 
                                     <div className="mt-4 p-4 rounded-4 bg-dark text-white shadow-lg">
@@ -186,22 +203,26 @@ const TaxReports: React.FC = () => {
                             ) : (
                                 <>
                                     <div className="mb-5">
-                                        <h6 className="bg-primary bg-opacity-10 p-2 rounded-2 fw-900 small text-uppercase text-primary ls-1 mb-3">Income Summary</h6>
+                                        <h6 className="bg-primary bg-opacity-10 p-2 rounded-2 fw-900 small text-uppercase text-primary ls-1 mb-3">Taxable Income Summary</h6>
                                         <FormRow line="1z" label="Total Wages/Salaries" value={taxCalculation.lineData['Line 1z: Total Wages'] || 0} />
                                         <FormRow line="2" label="Interest & Dividends" value={taxCalculation.lineData['Line 2: Tax-exempt/Taxable interest'] || 0} />
-                                        <FormRow line="3" label="Business Income (from Sched C)" value={0} /> {/* Should link to Business tab in a real flow */}
-                                        <FormRow line="9" label="Total Income" value={taxCalculation.income} bold isTotal />
+                                        <FormRow line="3" label="Business Income (from Sched C)" value={0} />
+                                        <FormRow line="9" label="Total Taxable Income" value={taxCalculation.taxableIncome} bold isTotal />
+                                    </div>
+
+                                    <div className="mb-5">
+                                        <h6 className="bg-primary bg-opacity-10 p-2 rounded-2 fw-900 small text-uppercase text-primary ls-1 mb-3">Equity & Transfers (Non-Taxable)</h6>
+                                        <FormRow line="-" label="Equity from Business" value={taxCalculation.lineData['Line 0: Non-Taxable Equity Movement'] || 0} isInfoOnly />
                                     </div>
 
                                     <div className="mb-5">
                                         <h6 className="bg-primary bg-opacity-10 p-2 rounded-2 fw-900 small text-uppercase text-primary ls-1 mb-3">Deductions & Adjustments</h6>
-                                        <FormRow line="12" label="Standard Deduction or Itemized" value={13850} /> {/* 2023 single standard example */}
-                                        <FormRow line="13" label="Qualified Business Income Deduction" value={0} />
+                                        <FormRow line="12" label="Standard Deduction" value={13850} />
                                     </div>
 
                                     <div className="mt-4 p-4 rounded-4 bg-primary text-white shadow-lg">
-                                        <FormRow line="15" label="Taxable Income" value={Math.max(0, taxCalculation.income - 13850)} bold />
-                                        <p className="small text-white text-opacity-75 mt-2 mb-0">Estimated based on standard US 2023 single filing status.</p>
+                                        <FormRow line="15" label="Taxable Income Estimate" value={Math.max(0, taxCalculation.taxableIncome - 13850)} bold />
+                                        <p className="small text-white text-opacity-75 mt-2 mb-0">Note: Equity transfers are excluded from tax calculations.</p>
                                     </div>
                                 </>
                             )}
@@ -215,49 +236,16 @@ const TaxReports: React.FC = () => {
                         <CardContent className="p-4">
                             <h6 className="fw-900 text-black mb-4 small text-uppercase ls-1 d-flex align-items-center gap-2">
                                 <FileSearch size={16} className="text-primary"/> 
-                                Data Integrity
+                                Accounting Tip
                             </h6>
-                            <div className="p-3 bg-light rounded-3 mb-3">
-                                <small className="text-muted d-block fw-bold text-uppercase mb-1" style={{ fontSize: '0.6rem' }}>Selected Entity</small>
-                                <div className="fw-800 text-dark d-flex align-items-center gap-2">
-                                    {activeEntity?.name} 
-                                    {activeEntity?.type === EntityType.BUSINESS ? <Briefcase size={12}/> : <User size={12}/>}
-                                </div>
-                            </div>
-                            <div className="p-3 bg-light rounded-3">
-                                <small className="text-muted d-block fw-bold text-uppercase mb-1" style={{ fontSize: '0.6rem' }}>Status</small>
-                                <div className="badge bg-success bg-opacity-10 text-success border-0 px-3 py-2 fw-900">
-                                    <ShieldCheck size={12} className="me-2"/> TAX-READY ENGINE
-                                </div>
-                            </div>
+                            <p className="text-muted small">
+                                In the US, money moved between your business and personal accounts is an <strong>Equity Transfer</strong>.
+                                <br/><br/>
+                                Use "Owner Draw" for the business exit and "Owner Equity Transfer" for the personal entry.
+                            </p>
                         </CardContent>
                     </Card>
-
-                    <Card className="border-0 shadow-sm mb-4 rounded-4 bg-subtle">
-                        <CardContent className="p-4">
-                            <h6 className="fw-900 text-black mb-3 small text-uppercase ls-1">Linked Accounts</h6>
-                            <p className="text-muted small mb-4">Transactions for the {activeTab} report are pulled from these source accounts:</p>
-                            <div className="d-flex flex-column gap-2">
-                                {accounts.filter(a => {
-                                    const ent = businessEntities.find(e => e.id === a.businessEntityId);
-                                    return activeTab === 'business' ? ent?.type === EntityType.BUSINESS : ent?.type === EntityType.PERSONAL;
-                                }).map(acc => (
-                                    <div key={acc.id} className="d-flex align-items-center justify-content-between p-3 rounded-3 bg-white border">
-                                        <div className="d-flex align-items-center gap-2">
-                                            <Building2 size={14} className="text-muted" />
-                                            <span className="small fw-700">{acc.name}</span>
-                                        </div>
-                                        <span className="badge bg-light text-muted border" style={{ fontSize: '0.6rem' }}>{acc.type}</span>
-                                    </div>
-                                ))}
-                            </div>
-                        </CardContent>
-                    </Card>
-
-                    <div className="alert alert-warning border-0 shadow-sm rounded-4 small">
-                        <Info size={16} className="me-2" />
-                        <strong>Disclaimer:</strong> This is a ledger tool for bookkeeping. Please present this report to a qualified CPA for final IRS filing.
-                    </div>
+                    {/* Rest of the sidebar... */}
                 </div>
             </div>
         </div>

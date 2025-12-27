@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import Card, { CardContent } from './ui/Card';
 import { Transaction, TransactionType, Category, BankAccount } from '../types';
 import { formatCurrency, formatDate, downloadCSV, generateId, downloadImportTemplate } from '../lib/utils';
-import { PlusCircle, Search, Edit2, Loader2, Calendar, Wallet, Trash2, Save, Sparkles, FileText, Check, AlertCircle, ArrowRight, Download, Upload, FileJson, Info, ArrowUpRight, ArrowDownRight, Tag } from 'lucide-react';
+import { PlusCircle, Search, Edit2, Loader2, Calendar, Wallet, Trash2, Save, Sparkles, FileText, Check, AlertCircle, ArrowRight, Download, Upload, FileJson, Info, ArrowUpRight, ArrowDownRight, Tag, ArrowRightLeft } from 'lucide-react';
 import Modal from './ui/Modal';
 import { useData } from '../lib/DataContext';
 import ExportMenu from './ui/ExportMenu';
@@ -112,7 +112,7 @@ const Transactions: React.FC = () => {
                                     <th className="ps-4 py-3 border-0 text-muted small fw-800 text-uppercase">Date</th>
                                     <th className="py-3 border-0 text-muted small fw-800 text-uppercase">Description / Vendor</th>
                                     <th className="py-3 border-0 text-muted small fw-800 text-uppercase">Category</th>
-                                    <th className="py-3 border-0 text-muted small fw-800 text-uppercase">Source Account</th>
+                                    <th className="py-3 border-0 text-muted small fw-800 text-uppercase">Source / Movement</th>
                                     <th className="py-3 border-0 text-muted small fw-800 text-uppercase text-end">Amount</th>
                                     <th className="pe-4 py-3 border-0 text-muted small fw-800 text-uppercase text-center">Action</th>
                                 </tr>
@@ -125,8 +125,14 @@ const Transactions: React.FC = () => {
                                         </td>
                                         <td className="py-4">
                                             <div className="d-flex align-items-center gap-3">
-                                                <div className={`p-2 rounded-circle ${t.type === TransactionType.INCOME ? 'bg-success bg-opacity-10 text-success' : 'bg-danger bg-opacity-10 text-danger'}`}>
-                                                    {t.type === TransactionType.INCOME ? <ArrowUpRight size={16}/> : <ArrowDownRight size={16}/>}
+                                                <div className={`p-2 rounded-circle ${
+                                                    t.type === TransactionType.INCOME ? 'bg-success bg-opacity-10 text-success' : 
+                                                    t.type === TransactionType.TRANSFER ? 'bg-primary bg-opacity-10 text-primary' :
+                                                    'bg-danger bg-opacity-10 text-danger'
+                                                }`}>
+                                                    {t.type === TransactionType.INCOME ? <ArrowUpRight size={16}/> : 
+                                                     t.type === TransactionType.TRANSFER ? <ArrowRightLeft size={16}/> : 
+                                                     <ArrowDownRight size={16}/>}
                                                 </div>
                                                 <span className="fw-800 text-dark">{t.description}</span>
                                             </div>
@@ -134,18 +140,29 @@ const Transactions: React.FC = () => {
                                         <td className="py-4">
                                             <div className="d-flex align-items-center gap-2">
                                                 <Tag size={12} className="text-muted" />
-                                                <span className="fw-bold text-muted small">{t.category?.name || 'Uncategorized'}</span>
+                                                <span className="fw-bold text-muted small">{t.category?.name || (t.type === TransactionType.TRANSFER ? 'Internal Transfer' : 'Uncategorized')}</span>
                                             </div>
                                         </td>
                                         <td className="py-4">
                                             <div className="d-flex align-items-center gap-2">
                                                 <Wallet size={12} className="text-muted" />
-                                                <span className="fw-bold text-muted small">{accounts.find(a => a.id === t.accountId)?.name}</span>
+                                                <div className="d-flex flex-column">
+                                                    <span className="fw-bold text-muted small">{accounts.find(a => a.id === t.accountId)?.name}</span>
+                                                    {t.type === TransactionType.TRANSFER && t.toAccountId && (
+                                                        <span className="text-muted fw-bold" style={{fontSize: '0.65rem'}}>
+                                                            → {accounts.find(a => a.id === t.toAccountId)?.name}
+                                                        </span>
+                                                    )}
+                                                </div>
                                             </div>
                                         </td>
                                         <td className="py-4 text-end">
-                                            <span className={`fw-900 fs-6 ${t.type === TransactionType.INCOME ? 'text-success' : 'text-black'}`}>
-                                                {t.type === TransactionType.INCOME ? '+' : '-'} {formatCurrency(t.amount)}
+                                            <span className={`fw-900 fs-6 ${
+                                                t.type === TransactionType.INCOME ? 'text-success' : 
+                                                t.type === TransactionType.TRANSFER ? 'text-primary' : 
+                                                'text-black'
+                                            }`}>
+                                                {t.type === TransactionType.INCOME ? '+' : t.type === TransactionType.TRANSFER ? '⇅' : '-'} {formatCurrency(t.amount)}
                                             </span>
                                         </td>
                                         <td className="pe-4 py-4 text-center">
@@ -166,6 +183,7 @@ const Transactions: React.FC = () => {
                         <div className="d-flex gap-2 p-1 bg-light rounded-3 border">
                             <button type="button" onClick={() => setFormData({...formData, type: TransactionType.EXPENSE})} className={`btn flex-fill py-2 rounded-2 ${formData.type === TransactionType.EXPENSE ? 'btn-white shadow-sm fw-bold border text-danger' : 'text-muted border-0 bg-transparent'}`}>Expense</button>
                             <button type="button" onClick={() => setFormData({...formData, type: TransactionType.INCOME})} className={`btn flex-fill py-2 rounded-2 ${formData.type === TransactionType.INCOME ? 'btn-white shadow-sm fw-bold border text-success' : 'text-muted border-0 bg-transparent'}`}>Income</button>
+                            <button type="button" onClick={() => setFormData({...formData, type: TransactionType.TRANSFER})} className={`btn flex-fill py-2 rounded-2 ${formData.type === TransactionType.TRANSFER ? 'btn-white shadow-sm fw-bold border text-primary' : 'text-muted border-0 bg-transparent'}`}>Transfer</button>
                         </div>
                     </div>
 
@@ -182,15 +200,44 @@ const Transactions: React.FC = () => {
 
                     <div className="mb-3">
                         <label className="form-label fw-bold small text-muted">Description / Vendor</label>
-                        <input type="text" className="form-control bg-light border-0 fw-bold" value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} required placeholder="e.g. Loves Travel Stop" />
+                        <input type="text" className="form-control bg-light border-0 fw-bold" value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} required placeholder={formData.type === TransactionType.TRANSFER ? "Internal Transfer" : "e.g. Loves Travel Stop"} />
                     </div>
 
-                    <div className="mb-4">
-                        <label className="form-label fw-bold small text-muted">Source Account</label>
-                        <select className="form-select bg-light border-0 fw-bold" value={formData.accountId} onChange={e => setFormData({...formData, accountId: e.target.value})} required>
-                            {accounts.map(acc => <option key={acc.id} value={acc.id}>{acc.name} ({acc.type})</option>)}
-                        </select>
+                    <div className="row g-3 mb-4">
+                        <div className={formData.type === TransactionType.TRANSFER ? "col-md-6" : "col-12"}>
+                            <label className="form-label fw-bold small text-muted">{formData.type === TransactionType.TRANSFER ? "Source Account" : "Source Account"}</label>
+                            <select className="form-select bg-light border-0 fw-bold" value={formData.accountId} onChange={e => setFormData({...formData, accountId: e.target.value})} required>
+                                {accounts.map(acc => <option key={acc.id} value={acc.id}>{acc.name} ({acc.type})</option>)}
+                            </select>
+                        </div>
+                        {formData.type === TransactionType.TRANSFER && (
+                            <div className="col-md-6">
+                                <label className="form-label fw-bold small text-muted">Destination Account</label>
+                                <select className="form-select bg-light border-0 fw-bold" value={formData.toAccountId || ''} onChange={e => setFormData({...formData, toAccountId: e.target.value})} required>
+                                    <option value="">Select Target...</option>
+                                    {accounts.filter(a => a.id !== formData.accountId).map(acc => (
+                                        <option key={acc.id} value={acc.id}>{acc.name} ({acc.type})</option>
+                                    ))}
+                                </select>
+                            </div>
+                        )}
                     </div>
+
+                    {formData.type !== TransactionType.TRANSFER && (
+                        <div className="mb-4">
+                            <label className="form-label fw-bold small text-muted">Category (Optional)</label>
+                            <select className="form-select bg-light border-0 fw-bold" value={formData.category?.id || ''} onChange={e => {
+                                const cat = categories.find(c => c.id === e.target.value);
+                                setFormData({...formData, category: cat});
+                            }}>
+                                <option value="">Uncategorized</option>
+                                {categories.filter(c => 
+                                    (formData.type === TransactionType.INCOME && c.type === TransactionType.INCOME) || 
+                                    (formData.type === TransactionType.EXPENSE && c.type === TransactionType.EXPENSE)
+                                ).map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
+                            </select>
+                        </div>
+                    )}
 
                     <button type="submit" className="btn btn-black w-100 py-3 fw-900 rounded-3 shadow-lg mt-2">
                         <Save size={18} className="me-2" /> Commit to Ledger

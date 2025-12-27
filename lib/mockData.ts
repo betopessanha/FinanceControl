@@ -6,6 +6,7 @@ export const incomeCategories: Category[] = [
   { id: '9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d', name: 'Freight Revenue', type: TransactionType.INCOME, isTaxDeductible: false },
   { id: '1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed', name: 'Detention / Layover', type: TransactionType.INCOME, isTaxDeductible: false },
   { id: 'a7b8c9d0-e1f2-4a3b-8c9d-0e1f2a3b4c5d', name: 'Fuel Surcharge', type: TransactionType.INCOME, isTaxDeductible: false },
+  { id: 'p1-income-equity', name: 'Owner Equity / Personal Transfer', type: TransactionType.INCOME, isTaxDeductible: false },
 ];
 
 export const expenseCategories: Category[] = [
@@ -35,7 +36,6 @@ export const trucks: Truck[] = [
   { id: '660e8400-e29b-41d4-a716-446655440001', unitNumber: 'T-102', make: 'Kenworth', model: 'T680', year: 2021 },
 ];
 
-// Added missing 'type' property based on BusinessEntity interface
 export const businessEntities: BusinessEntity[] = [
     { 
         id: '770e8400-e29b-41d4-a716-446655440002', 
