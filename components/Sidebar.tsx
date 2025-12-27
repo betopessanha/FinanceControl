@@ -20,12 +20,12 @@ const NavItem: React.FC<{
   onClick: () => void;
 }> = ({ icon: Icon, label, isActive, onClick }) => {
   const displayLabels: Partial<Record<Page, string>> = {
-    FiscalYears: 'Periods',
-    Tax: 'Tax Hub',
+    FiscalYears: 'Fiscal Periods',
+    Tax: 'Tax Center',
     Users: 'Team Members',
     Settings: 'Settings',
     Loads: 'Logistics',
-    Categories: 'Categories'
+    Categories: 'Chart of Accounts'
   };
   
   const displayLabel = displayLabels[label] || label;
@@ -101,12 +101,18 @@ const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage, isOpen, se
         </div>
 
         <div className="flex-grow-1 overflow-auto py-2">
-            <div className="px-4 mb-2"><small className="text-uppercase fw-800 text-muted" style={{fontSize: '0.6rem', letterSpacing: '0.1em'}}>Reporting</small></div>
+            <div className="px-4 mb-2"><small className="text-uppercase fw-800 text-muted" style={{fontSize: '0.6rem', letterSpacing: '0.1em'}}>Core Reporting</small></div>
             <ul className="nav flex-column mb-4">
-              {['Dashboard', 'Transactions', 'Reports', 'Tax'].map((item) => (
+              {['Dashboard', 'Transactions', 'Reports', 'Tax', 'FiscalYears'].map((item) => (
                 <NavItem 
                   key={item} 
-                  icon={item === 'Dashboard' ? LayoutDashboard : item === 'Transactions' ? FileText : item === 'Reports' ? BarChart2 : Landmark} 
+                  icon={
+                    item === 'Dashboard' ? LayoutDashboard : 
+                    item === 'Transactions' ? FileText : 
+                    item === 'Reports' ? BarChart2 : 
+                    item === 'Tax' ? Landmark : 
+                    CalendarRange
+                  } 
                   label={item as Page} 
                   isActive={activePage === item} 
                   onClick={() => handleNavigation(item as Page)} 
@@ -114,10 +120,22 @@ const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage, isOpen, se
               ))}
             </ul>
 
-            <div className="px-4 mb-2"><small className="text-uppercase fw-800 text-muted" style={{fontSize: '0.6rem', letterSpacing: '0.1em'}}>Asset Management</small></div>
+            <div className="px-4 mb-2"><small className="text-uppercase fw-800 text-muted" style={{fontSize: '0.6rem', letterSpacing: '0.1em'}}>Operational Assets</small></div>
             <ul className="nav flex-column mb-4">
-              {['Loads', 'Trucks', 'Accounts', 'Companies'].map((item) => (
-                <NavItem key={item} icon={item === 'Loads' ? Map : item === 'Trucks' ? Truck : item === 'Accounts' ? Wallet : Building2} label={item as Page} isActive={activePage === item} onClick={() => handleNavigation(item as Page)} />
+              {['Loads', 'Trucks', 'Accounts', 'Companies', 'Categories'].map((item) => (
+                <NavItem 
+                  key={item} 
+                  icon={
+                    item === 'Loads' ? Map : 
+                    item === 'Trucks' ? Truck : 
+                    item === 'Accounts' ? Wallet : 
+                    item === 'Companies' ? Building2 : 
+                    Tags
+                  } 
+                  label={item as Page} 
+                  isActive={activePage === item} 
+                  onClick={() => handleNavigation(item as Page)} 
+                />
               ))}
             </ul>
         </div>
