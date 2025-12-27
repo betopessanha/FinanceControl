@@ -77,6 +77,7 @@ export interface Transaction {
   date: string;
   description: string;
   category?: Category;
+  toCategory?: Category;
   amount: number;
   truck?: Truck;
   type: TransactionType;

@@ -31,6 +31,7 @@ const Transactions: React.FC = () => {
         type: TransactionType.EXPENSE,
         accountId: '',
         category: undefined,
+        toCategory: undefined,
         toAccountId: undefined
     });
 
@@ -44,6 +45,7 @@ const Transactions: React.FC = () => {
                 type: transaction.type,
                 accountId: transaction.accountId,
                 category: transaction.category,
+                toCategory: transaction.toCategory,
                 toAccountId: transaction.toAccountId
             });
         } else {
@@ -55,6 +57,7 @@ const Transactions: React.FC = () => {
                 type: TransactionType.EXPENSE,
                 accountId: accounts.length > 0 ? accounts[0].id : '',
                 category: undefined,
+                toCategory: undefined,
                 toAccountId: undefined
             });
         }
@@ -79,7 +82,8 @@ const Transactions: React.FC = () => {
     const filteredTransactions = useMemo(() => {
         return transactions.filter(t => {
             const matchesSearch = t.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                                 t.category?.name.toLowerCase().includes(searchTerm.toLowerCase());
+                                 t.category?.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                                 t.toCategory?.name.toLowerCase().includes(searchTerm.toLowerCase());
             
             const matchesAccount = filterAccountId === '' || t.accountId === filterAccountId || t.toAccountId === filterAccountId;
             
@@ -223,9 +227,16 @@ const Transactions: React.FC = () => {
                                             <td className="py-4">
                                                 <div className="d-flex align-items-center gap-2">
                                                     <Tag size={12} className="text-muted" />
-                                                    <span className="fw-bold text-muted small">
-                                                        {t.category?.name || (t.type === TransactionType.TRANSFER ? 'Internal Transfer' : 'Uncategorized')}
-                                                    </span>
+                                                    <div className="d-flex flex-column">
+                                                        <span className="fw-bold text-muted small text-truncate" style={{maxWidth: '120px'}}>
+                                                            {t.category?.name || 'Uncategorized'}
+                                                        </span>
+                                                        {t.type === TransactionType.TRANSFER && t.toCategory && (
+                                                            <span className="text-primary fw-bold" style={{fontSize: '0.65rem'}}>
+                                                                ↳ {t.toCategory.name}
+                                                            </span>
+                                                        )}
+                                                    </div>
                                                 </div>
                                             </td>
                                             <td className="py-4">
@@ -322,7 +333,7 @@ const Transactions: React.FC = () => {
                         )}
                     </div>
 
-                    {formData.type !== TransactionType.TRANSFER && (
+                    {formData.type !== TransactionType.TRANSFER ? (
                         <div className="mb-4">
                             <label className="form-label fw-bold small text-muted">Category (Optional)</label>
                             <select className="form-select bg-light border-0 fw-bold" value={formData.category?.id || ''} onChange={e => {
@@ -335,6 +346,33 @@ const Transactions: React.FC = () => {
                                     (formData.type === TransactionType.EXPENSE && c.type === TransactionType.EXPENSE)
                                 ).map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
                             </select>
+                        </div>
+                    ) : (
+                        <div className="row g-3 mb-4">
+                            <div className="col-md-6">
+                                <label className="form-label fw-bold small text-muted">Outflow Category</label>
+                                <select className="form-select bg-light border-0 fw-bold" value={formData.category?.id || ''} onChange={e => {
+                                    const cat = categories.find(c => c.id === e.target.value);
+                                    setFormData({...formData, category: cat});
+                                }}>
+                                    <option value="">Select Exit...</option>
+                                    {categories.filter(c => c.type === TransactionType.EXPENSE || c.name.includes('Transfer')).map(cat => (
+                                        <option key={cat.id} value={cat.id}>{cat.name}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div className="col-md-6">
+                                <label className="form-label fw-bold small text-muted">Inflow Category</label>
+                                <select className="form-select bg-light border-0 fw-bold" value={formData.toCategory?.id || ''} onChange={e => {
+                                    const cat = categories.find(c => c.id === e.target.value);
+                                    setFormData({...formData, toCategory: cat});
+                                }}>
+                                    <option value="">Select Entry...</option>
+                                    {categories.filter(c => c.type === TransactionType.INCOME || c.name.includes('Equity') || c.name.includes('Transfer')).map(cat => (
+                                        <option key={cat.id} value={cat.id}>{cat.name}</option>
+                                    ))}
+                                </select>
+                            </div>
                         </div>
                     )}
 

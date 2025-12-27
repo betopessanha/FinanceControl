@@ -140,7 +140,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
                     if (resEntities.data?.length) { 
                         const mapped = resEntities.data.map(e => ({
-                            id: e.id, name: e.name, type: e.type, structure: e.structure, taxForm: e.tax_form,
+                            id: e.id, name: e.name, type: e.type, structure: e.structure, tax_form: e.tax_form,
                             ein: e.ein, email: e.email, phone: e.phone, website: e.website,
                             address: e.address, city: e.city, state: e.state, zip: e.zip
                         }));
@@ -156,8 +156,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
                         const allTrucks = resTrucks.data || localTrucks;
                         const mapped = resTrans.data.map(t => ({
                             id: t.id, date: t.date, description: t.description, amount: parseFloat(t.amount) || 0,
-                            type: t.type as TransactionType, accountId: t.account_id,
+                            type: t.type as TransactionType, accountId: t.account_id, toAccountId: t.to_account_id,
                             category: allCats.find((c: any) => c.id === t.category_id),
+                            toCategory: allCats.find((c: any) => c.id === t.to_category_id),
                             truck: allTrucks.find((tr: any) => tr.id === t.truck_id)
                         }));
                         setTransactions(mapped); saveToLocal(STORAGE_KEYS.TRANSACTIONS, mapped);
@@ -225,12 +226,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             addLocalTransaction: async (t) => {
                 const updated = [t, ...transactions];
                 setTransactions(updated); saveToLocal(STORAGE_KEYS.TRANSACTIONS, updated);
-                return syncToCloud('transactions', t.id, { id: t.id, amount: t.amount, description: t.description, date: t.date, type: t.type, category_id: t.category?.id, account_id: t.accountId }, 'insert');
+                return syncToCloud('transactions', t.id, { id: t.id, amount: t.amount, description: t.description, date: t.date, type: t.type, category_id: t.category?.id, to_category_id: t.toCategory?.id, account_id: t.accountId, to_account_id: t.toAccountId }, 'insert');
             },
             updateLocalTransaction: async (t) => {
                 const updated = transactions.map(x => x.id === t.id ? t : x);
                 setTransactions(updated); saveToLocal(STORAGE_KEYS.TRANSACTIONS, updated);
-                return syncToCloud('transactions', t.id, { amount: t.amount, description: t.description, date: t.date, type: t.type, category_id: t.category?.id, account_id: t.accountId }, 'update');
+                return syncToCloud('transactions', t.id, { amount: t.amount, description: t.description, date: t.date, type: t.type, category_id: t.category?.id, to_category_id: t.toCategory?.id, account_id: t.accountId, to_account_id: t.toAccountId }, 'update');
             },
             deleteLocalTransaction: async (id) => {
                 const updated = transactions.filter(x => x.id !== id);
