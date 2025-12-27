@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import Card, { CardContent } from './ui/Card';
 import { Transaction, TransactionType, Category, BankAccount } from '../types';
 import { formatCurrency, formatDate, downloadCSV, generateId, downloadImportTemplate } from '../lib/utils';
-import { PlusCircle, Search, Edit2, Loader2, Calendar, Wallet, Trash2, Save, Sparkles, FileText, Check, AlertCircle, ArrowRight, Download, Upload, FileJson, Info, ArrowUpRight, ArrowDownRight, Tag, ArrowRightLeft } from 'lucide-react';
+import { PlusCircle, Search, Edit2, Loader2, Calendar, Wallet, Trash2, Save, Sparkles, FileText, Check, AlertCircle, ArrowRight, Download, Upload, FileJson, Info, ArrowUpRight, ArrowDownRight, Tag, ArrowRightLeft, X, Filter } from 'lucide-react';
 import Modal from './ui/Modal';
 import { useData } from '../lib/DataContext';
 import ExportMenu from './ui/ExportMenu';
@@ -16,10 +16,13 @@ const Transactions: React.FC = () => {
     } = useData();
     
     const [searchTerm, setSearchTerm] = useState('');
+    const [startDate, setStartDate] = useState('');
+    const [endDate, setEndDate] = useState('');
+    const [filterAccountId, setFilterAccountId] = useState('');
+    
     const [isFormModalOpen, setIsFormModalOpen] = useState(false);
     const [isImportModalOpen, setIsImportModalOpen] = useState(false);
     const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
-    const [isAiSuggesting, setIsAiSuggesting] = useState(false);
 
     const [formData, setFormData] = useState<Omit<Transaction, 'id'>>({
         date: new Date().toISOString().split('T')[0],
@@ -66,12 +69,29 @@ const Transactions: React.FC = () => {
         setIsFormModalOpen(false);
     };
 
+    const resetFilters = () => {
+        setSearchTerm('');
+        setStartDate('');
+        setEndDate('');
+        setFilterAccountId('');
+    };
+
     const filteredTransactions = useMemo(() => {
-        return transactions.filter(t => 
-            t.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            t.category?.name.toLowerCase().includes(searchTerm.toLowerCase())
-        );
-    }, [transactions, searchTerm]);
+        return transactions.filter(t => {
+            const matchesSearch = t.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                                 t.category?.name.toLowerCase().includes(searchTerm.toLowerCase());
+            
+            const matchesAccount = filterAccountId === '' || t.accountId === filterAccountId || t.toAccountId === filterAccountId;
+            
+            const transDate = t.date.split('T')[0];
+            const matchesStart = startDate === '' || transDate >= startDate;
+            const matchesEnd = endDate === '' || transDate <= endDate;
+
+            return matchesSearch && matchesAccount && matchesStart && matchesEnd;
+        });
+    }, [transactions, searchTerm, filterAccountId, startDate, endDate]);
+
+    const hasActiveFilters = searchTerm !== '' || startDate !== '' || endDate !== '' || filterAccountId !== '';
 
     return (
         <div className="container-fluid py-2 animate-slide-up">
@@ -93,15 +113,65 @@ const Transactions: React.FC = () => {
             <Card className="border-0 shadow-sm overflow-hidden">
                 <CardContent className="p-0">
                     <div className="p-4 bg-white border-bottom">
-                        <div className="position-relative" style={{maxWidth: '400px'}}>
-                            <Search size={18} className="position-absolute top-50 start-0 translate-middle-y ms-3 text-muted" />
-                            <input 
-                                type="text" 
-                                className="form-control border-0 bg-light ps-5 py-2 rounded-pill fw-bold" 
-                                placeholder="Search payments, vendors, categories..."
-                                value={searchTerm}
-                                onChange={e => setSearchTerm(e.target.value)}
-                            />
+                        <div className="row g-3 align-items-end">
+                            <div className="col-12 col-lg-4">
+                                <label className="form-label fw-800 small text-muted text-uppercase mb-2">Search Records</label>
+                                <div className="position-relative">
+                                    <Search size={18} className="position-absolute top-50 start-0 translate-middle-y ms-3 text-muted" />
+                                    <input 
+                                        type="text" 
+                                        className="form-control border-0 bg-light ps-5 py-2 rounded-3 fw-bold" 
+                                        placeholder="Vendor, category, etc..."
+                                        value={searchTerm}
+                                        onChange={e => setSearchTerm(e.target.value)}
+                                    />
+                                </div>
+                            </div>
+                            <div className="col-12 col-md-6 col-lg-3">
+                                <label className="form-label fw-800 small text-muted text-uppercase mb-2">Filter by Account</label>
+                                <div className="position-relative">
+                                    <Wallet size={16} className="position-absolute top-50 start-0 translate-middle-y ms-3 text-muted" />
+                                    <select 
+                                        className="form-select border-0 bg-light ps-5 py-2 rounded-3 fw-bold" 
+                                        value={filterAccountId}
+                                        onChange={e => setFilterAccountId(e.target.value)}
+                                    >
+                                        <option value="">All Accounts</option>
+                                        {accounts.map(acc => (
+                                            <option key={acc.id} value={acc.id}>{acc.name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            </div>
+                            <div className="col-6 col-md-3 col-lg-2">
+                                <label className="form-label fw-800 small text-muted text-uppercase mb-2">Start Date</label>
+                                <input 
+                                    type="date" 
+                                    className="form-control border-0 bg-light py-2 rounded-3 fw-bold" 
+                                    value={startDate}
+                                    onChange={e => setStartDate(e.target.value)}
+                                />
+                            </div>
+                            <div className="col-6 col-md-3 col-lg-2">
+                                <label className="form-label fw-800 small text-muted text-uppercase mb-2">End Date</label>
+                                <input 
+                                    type="date" 
+                                    className="form-control border-0 bg-light py-2 rounded-3 fw-bold" 
+                                    value={endDate}
+                                    onChange={e => setEndDate(e.target.value)}
+                                />
+                            </div>
+                            {hasActiveFilters && (
+                                <div className="col-auto">
+                                    <button 
+                                        onClick={resetFilters} 
+                                        className="btn btn-white border-0 text-muted p-2" 
+                                        title="Clear all filters"
+                                    >
+                                        <X size={20} />
+                                    </button>
+                                </div>
+                            )}
                         </div>
                     </div>
 
@@ -118,7 +188,7 @@ const Transactions: React.FC = () => {
                                 </tr>
                             </thead>
                             <tbody>
-                                {filteredTransactions.map(t => (
+                                {filteredTransactions.length > 0 ? filteredTransactions.map(t => (
                                     <tr key={t.id} className="border-bottom border-light">
                                         <td className="ps-4 py-4">
                                             <span className="text-muted fw-bold small">{formatDate(t.date)}</span>
@@ -169,7 +239,20 @@ const Transactions: React.FC = () => {
                                             <button onClick={() => handleOpenModal(t)} className="btn btn-sm btn-white border-0 shadow-none"><Edit2 size={16} className="text-muted"/></button>
                                         </td>
                                     </tr>
-                                ))}
+                                )) : (
+                                    <tr>
+                                        <td colSpan={6} className="py-5 text-center text-muted">
+                                            <div className="py-4">
+                                                <Filter size={48} className="mb-3 opacity-10" />
+                                                <h6 className="fw-bold">No results found</h6>
+                                                <p className="small mb-0">Try adjusting your filters or search term.</p>
+                                                {hasActiveFilters && (
+                                                    <button onClick={resetFilters} className="btn btn-link btn-sm mt-2 text-decoration-none">Clear all filters</button>
+                                                )}
+                                            </div>
+                                        </td>
+                                    </tr>
+                                )}
                             </tbody>
                         </table>
                     </div>
