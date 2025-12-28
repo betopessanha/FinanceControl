@@ -43,6 +43,7 @@ const Transactions: React.FC = () => {
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
     const [aiResults, setAiResults] = useState<AISuggestion[]>([]);
     const [isAnalyzing, setIsAnalyzing] = useState(false);
+    const [aiError, setAiError] = useState<string | null>(null);
     const [appliedIds, setAppliedIds] = useState<Set<string>>(new Set());
 
     const [formData, setFormData] = useState<Omit<Transaction, 'id'>>({
@@ -110,37 +111,41 @@ const Transactions: React.FC = () => {
     };
 
     const handleAnalyzeWithAI = async () => {
+        if (selectedIds.size === 0) return;
+        
         setIsAnalyzing(true);
+        setAiError(null);
         setIsAIModalOpen(true);
         setAppliedIds(new Set());
+        setAiResults([]);
+
         const selectedTrans = transactions.filter(t => selectedIds.has(t.id));
         
         try {
             const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
             
-            // Contexto das categorias para o AI não inventar nomes
-            const categoryContext = categories.map(c => ({ id: c.id, name: c.name, type: c.type, deductible: c.isTaxDeductible }));
+            // Contexto rico de categorias para evitar alucinações da IA
+            const categoryContext = categories.map(c => ({ 
+                id: c.id, 
+                name: c.name, 
+                type: c.type, 
+                deductible: c.isTaxDeductible 
+            }));
 
             const prompt = `Act as a Senior CPA specializing in the US Trucking Industry. 
-            Analyze the following transactions and suggest the most tax-advantageous category for each based on IRS Publication 463 and Schedule C rules.
-            
-            Available Categories: ${JSON.stringify(categoryContext)}
-            
-            Selected Transactions: ${JSON.stringify(selectedTrans.map(t => ({ 
-                id: t.id, 
-                desc: t.description, 
-                amount: t.amount, 
-                currentCat: t.category?.name 
-            })))}
-            
-            For each transaction, provide:
-            1. The ID of the suggested category from the list.
-            2. The name of that category.
-            3. A concise reason explaining the tax strategy.
-            4. A confidence score (0-1).
-            5. The specific tax advantage (e.g., "100% Deductible", "Depreciable Asset", "Per Diem Rule").
+            You must analyze the following ${selectedTrans.length} transactions and suggest the most tax-advantageous category for EACH one.
 
-            Return JSON ONLY as an array of objects.`;
+            Available Categories in the system:
+            ${JSON.stringify(categoryContext)}
+
+            Transactions to analyze:
+            ${selectedTrans.map(t => `- [ID: ${t.id}] Desc: "${t.description}", Amt: ${t.amount}, Current: "${t.category?.name || 'Uncategorized'}"`).join('\n')}
+
+            Rules:
+            1. You MUST return exactly ONE suggestion for EVERY transaction ID listed above.
+            2. The suggestedCategoryId MUST be exactly one of the IDs from the Available Categories provided.
+            3. The reason must explain why it's a good deduction for a trucking company (IRS compliance).
+            4. Return the data ONLY as a JSON array.`;
 
             const result = await ai.models.generateContent({
                 model: 'gemini-3-flash-preview',
@@ -165,10 +170,13 @@ const Transactions: React.FC = () => {
                 }
             });
 
+            if (!result.text) throw new Error("A IA não retornou resultados.");
+            
             const suggestions = JSON.parse(result.text);
             setAiResults(suggestions);
-        } catch (e) {
+        } catch (e: any) {
             console.error("AI Analysis failed", e);
+            setAiError(e.message || "Ocorreu um erro ao conectar com o auditor IA. Verifique sua chave de API ou conexão.");
         } finally {
             setIsAnalyzing(false);
         }
@@ -402,7 +410,14 @@ const Transactions: React.FC = () => {
                         <div className="text-center py-5">
                             <div className="spinner-border text-primary mb-3" role="status"></div>
                             <h5 className="fw-900">Expert Auditor Thinking...</h5>
-                            <p className="text-muted small">Gemini is applying IRS Pub 463 logic to your ledger entries.</p>
+                            <p className="text-muted small">Gemini is applying IRS logic to each selected entry.</p>
+                        </div>
+                    ) : aiError ? (
+                        <div className="text-center py-5">
+                            <AlertCircle size={48} className="text-danger mb-3" />
+                            <h5 className="fw-900">Analysis Failed</h5>
+                            <p className="text-muted small mb-4">{aiError}</p>
+                            <button onClick={handleAnalyzeWithAI} className="btn btn-primary px-4 fw-bold rounded-3">Try Again</button>
                         </div>
                     ) : (
                         <div>
@@ -411,26 +426,28 @@ const Transactions: React.FC = () => {
                                     <BrainCircuit className="text-primary flex-shrink-0" size={32} />
                                     <div>
                                         <h6 className="fw-900 text-black mb-1">Deduction Strategy Ready</h6>
-                                        <p className="small mb-0 text-muted">We found {aiResults.length} ways to optimize your tax reporting. Review each item below.</p>
+                                        <p className="small mb-0 text-muted">Reviewing analysis for {aiResults.length} transactions.</p>
                                     </div>
                                 </div>
-                                <button onClick={applyAllSuggestions} className="btn btn-primary px-4 fw-900 rounded-3 shadow-sm">
+                                <button onClick={applyAllSuggestions} className="btn btn-primary px-4 fw-900 rounded-3 shadow-sm" disabled={aiResults.length === 0}>
                                     Apply All Sugestions
                                 </button>
                             </div>
 
-                            <div className="d-flex flex-column gap-3 overflow-auto pr-2" style={{ maxHeight: '50vh' }}>
-                                {aiResults.map(res => {
+                            <div className="d-flex flex-column gap-3 overflow-auto pr-2" style={{ maxHeight: '60vh' }}>
+                                {aiResults.length > 0 ? aiResults.map(res => {
                                     const t = transactions.find(x => x.id === res.id);
+                                    if (!t) return null;
                                     const isApplied = appliedIds.has(res.id);
+                                    
                                     return (
                                         <div key={res.id} className={`card border rounded-4 transition-all ${isApplied ? 'bg-success bg-opacity-5 opacity-75' : 'bg-white shadow-sm'}`}>
                                             <div className="card-body p-4">
                                                 <div className="d-flex justify-content-between align-items-start mb-3">
                                                     <div>
-                                                        <span className="fw-900 fs-5 text-dark">{t?.description}</span>
+                                                        <span className="fw-900 fs-5 text-dark">{t.description}</span>
                                                         <div className="text-muted small fw-bold mt-1">
-                                                            TRANSACTION AMOUNT: <span className="text-black">{formatCurrency(t?.amount || 0)}</span>
+                                                            VALUE: <span className="text-black">{formatCurrency(t.amount)}</span>
                                                         </div>
                                                     </div>
                                                     <div className="badge bg-primary bg-opacity-10 text-primary border-0 px-3 py-2 rounded-pill fw-900" style={{fontSize: '0.65rem'}}>
@@ -439,20 +456,24 @@ const Transactions: React.FC = () => {
                                                 </div>
 
                                                 <div className="bg-light p-3 rounded-3 mb-3 border border-dashed d-flex align-items-center justify-content-between">
-                                                    <div className="d-flex align-items-center gap-3">
-                                                        <div className="text-muted small fw-800 text-uppercase">Current</div>
-                                                        <div className="badge bg-white text-muted border px-2 py-1 rounded-pill">{t?.category?.name || 'Uncategorized'}</div>
-                                                        <ArrowRight size={16} className="text-muted opacity-50" />
-                                                        <div className="text-primary small fw-800 text-uppercase">AI Recommended</div>
-                                                        <div className="badge bg-primary text-white border-0 px-2 py-1 rounded-pill">{res.suggestedCategoryName}</div>
+                                                    <div className="d-flex flex-column flex-md-row align-items-md-center gap-2 gap-md-3">
+                                                        <div className="d-flex align-items-center gap-2">
+                                                            <div className="text-muted small fw-800 text-uppercase">Current:</div>
+                                                            <div className="badge bg-white text-muted border px-2 py-1 rounded-pill">{t.category?.name || 'Uncategorized'}</div>
+                                                        </div>
+                                                        <ArrowRight size={16} className="text-muted opacity-50 d-none d-md-block" />
+                                                        <div className="d-flex align-items-center gap-2">
+                                                            <div className="text-primary small fw-800 text-uppercase">AI Recommended:</div>
+                                                            <div className="badge bg-primary text-white border-0 px-2 py-1 rounded-pill">{res.suggestedCategoryName}</div>
+                                                        </div>
                                                     </div>
-                                                    <div className="text-end">
-                                                        <div className="text-muted" style={{fontSize: '0.6rem', fontWeight: 800}}>AI CONFIDENCE</div>
+                                                    <div className="text-end d-none d-md-block">
+                                                        <div className="text-muted" style={{fontSize: '0.6rem', fontWeight: 800}}>CONFIDENCE</div>
                                                         <div className="fw-900 text-primary">{Math.round(res.confidence * 100)}%</div>
                                                     </div>
                                                 </div>
 
-                                                <div className="d-flex justify-content-between align-items-center">
+                                                <div className="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3">
                                                     <div className="d-flex align-items-center gap-2 flex-grow-1">
                                                         <Info size={14} className="text-primary flex-shrink-0" />
                                                         <span className="small text-muted italic">"{res.reason}"</span>
@@ -460,7 +481,7 @@ const Transactions: React.FC = () => {
                                                     <button 
                                                         onClick={() => applySuggestion(res)} 
                                                         disabled={isApplied}
-                                                        className={`btn btn-sm px-4 fw-900 rounded-3 transition-all ${isApplied ? 'btn-success text-white' : 'btn-white border shadow-sm text-primary'}`}
+                                                        className={`btn btn-sm px-4 fw-900 rounded-3 transition-all ${isApplied ? 'btn-success text-white border-0' : 'btn-white border shadow-sm text-primary'}`}
                                                     >
                                                         {isApplied ? <><Check size={14} className="me-2" /> Applied</> : 'Accept Suggestion'}
                                                     </button>
@@ -468,10 +489,30 @@ const Transactions: React.FC = () => {
                                             </div>
                                         </div>
                                     );
-                                })}
+                                }) : (
+                                    <div className="text-center py-4 text-muted">
+                                        No individual suggestions could be generated.
+                                    </div>
+                                )}
                             </div>
                         </div>
                     )}
+                </div>
+            </Modal>
+
+            {/* Import Modal */}
+            <Modal isOpen={isImportModalOpen} onClose={() => setIsImportModalOpen(false)} title="Import Data">
+                <div className="p-1">
+                    <p className="text-muted small mb-4">Link your CSV files or bank statements here.</p>
+                    <div className="d-grid gap-3">
+                        <button className="btn btn-white border shadow-sm p-4 rounded-4 text-start d-flex align-items-center gap-3">
+                            <div className="bg-primary bg-opacity-10 p-3 rounded-3 text-primary"><FileJson size={24}/></div>
+                            <div>
+                                <h6 className="fw-900 mb-1">CSV/Excel Import</h6>
+                                <p className="text-muted small mb-0">Drag and drop your files here.</p>
+                            </div>
+                        </button>
+                    </div>
                 </div>
             </Modal>
 
