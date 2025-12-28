@@ -7,7 +7,8 @@ import {
     PlusCircle, Search, Edit2, Loader2, Calendar, Wallet, Trash2, Save, 
     Sparkles, FileText, Check, AlertCircle, ArrowRight, Download, Upload, 
     FileJson, Info, ArrowUpRight, ArrowDownRight, Tag, ArrowRightLeft, 
-    X, Filter, CheckSquare, Square, Trash, BrainCircuit, Zap, RefreshCw, CheckCircle2
+    X, Filter, CheckSquare, Square, Trash, BrainCircuit, Zap, RefreshCw, CheckCircle2,
+    AlertTriangle
 } from 'lucide-react';
 import Modal from './ui/Modal';
 import { useData } from '../lib/DataContext';
@@ -124,30 +125,32 @@ const Transactions: React.FC = () => {
         try {
             const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
             
-            // Contexto rico de categorias para evitar alucinações da IA
-            const categoryContext = categories.map(c => ({ 
+            // Provide exact category context to the AI so it uses IDs that exist in the DB
+            const categoryList = categories.map(c => ({ 
                 id: c.id, 
                 name: c.name, 
                 type: c.type, 
-                deductible: c.isTaxDeductible 
+                isDeductible: c.isTaxDeductible 
             }));
 
-            const prompt = `Act as a Senior CPA specializing in the US Trucking Industry. 
-            You must analyze the following ${selectedTrans.length} transactions and suggest the most tax-advantageous category for EACH one.
+            const prompt = `Act as a Senior CPA for the US Trucking Industry. 
+            Analyze THESE ${selectedTrans.length} specific transactions and assign the best category for EACH one from the provided system categories.
+            
+            SYSTEM CATEGORIES:
+            ${JSON.stringify(categoryList)}
+            
+            TRANSACTIONS TO AUDIT:
+            ${selectedTrans.map(t => `[ID: ${t.id}] Description: "${t.description}", Amount: ${t.amount}, Current Category: "${t.category?.name || 'None'}"`).join('\n')}
+            
+            TASK:
+            Return a JSON ARRAY where every transaction ID above has a suggestion.
+            Use the exact Category ID from the SYSTEM CATEGORIES list.
+            Reasoning should be based on IRS Publication 463 (Travel, Gift, and Car Expenses) or Schedule C rules for trucking.
+            
+            OUTPUT FORMAT:
+            [{ "id": "trans_id", "suggestedCategoryId": "cat_id", "suggestedCategoryName": "cat_name", "reason": "why...", "confidence": 0.95, "advantage": "100% Deductible" }]`;
 
-            Available Categories in the system:
-            ${JSON.stringify(categoryContext)}
-
-            Transactions to analyze:
-            ${selectedTrans.map(t => `- [ID: ${t.id}] Desc: "${t.description}", Amt: ${t.amount}, Current: "${t.category?.name || 'Uncategorized'}"`).join('\n')}
-
-            Rules:
-            1. You MUST return exactly ONE suggestion for EVERY transaction ID listed above.
-            2. The suggestedCategoryId MUST be exactly one of the IDs from the Available Categories provided.
-            3. The reason must explain why it's a good deduction for a trucking company (IRS compliance).
-            4. Return the data ONLY as a JSON array.`;
-
-            const result = await ai.models.generateContent({
+            const response = await ai.models.generateContent({
                 model: 'gemini-3-flash-preview',
                 contents: prompt,
                 config: { 
@@ -170,13 +173,14 @@ const Transactions: React.FC = () => {
                 }
             });
 
-            if (!result.text) throw new Error("A IA não retornou resultados.");
+            const textOutput = response.text;
+            if (!textOutput) throw new Error("AI returned empty response");
             
-            const suggestions = JSON.parse(result.text);
+            const suggestions: AISuggestion[] = JSON.parse(textOutput);
             setAiResults(suggestions);
         } catch (e: any) {
             console.error("AI Analysis failed", e);
-            setAiError(e.message || "Ocorreu um erro ao conectar com o auditor IA. Verifique sua chave de API ou conexão.");
+            setAiError(e.message || "Failed to connect to AI Auditor. Check API Key configuration.");
         } finally {
             setIsAnalyzing(false);
         }
@@ -409,15 +413,15 @@ const Transactions: React.FC = () => {
                     {isAnalyzing ? (
                         <div className="text-center py-5">
                             <div className="spinner-border text-primary mb-3" role="status"></div>
-                            <h5 className="fw-900">Expert Auditor Thinking...</h5>
-                            <p className="text-muted small">Gemini is applying IRS logic to each selected entry.</p>
+                            <h5 className="fw-900">AI Specialist Analyzing...</h5>
+                            <p className="text-muted small">Gemini is mapping your expenses to IRS categories for maximum deduction benefit.</p>
                         </div>
                     ) : aiError ? (
                         <div className="text-center py-5">
                             <AlertCircle size={48} className="text-danger mb-3" />
-                            <h5 className="fw-900">Analysis Failed</h5>
-                            <p className="text-muted small mb-4">{aiError}</p>
-                            <button onClick={handleAnalyzeWithAI} className="btn btn-primary px-4 fw-bold rounded-3">Try Again</button>
+                            <h5 className="fw-900 text-danger">Analysis Failed</h5>
+                            <p className="text-muted small">{aiError}</p>
+                            <button onClick={handleAnalyzeWithAI} className="btn btn-primary mt-3 px-4 fw-bold">Try Again</button>
                         </div>
                     ) : (
                         <div>
@@ -425,11 +429,15 @@ const Transactions: React.FC = () => {
                                 <div className="d-flex gap-3">
                                     <BrainCircuit className="text-primary flex-shrink-0" size={32} />
                                     <div>
-                                        <h6 className="fw-900 text-black mb-1">Deduction Strategy Ready</h6>
-                                        <p className="small mb-0 text-muted">Reviewing analysis for {aiResults.length} transactions.</p>
+                                        <h6 className="fw-900 text-black mb-1">Audit Complete</h6>
+                                        <p className="small mb-0 text-muted">Review and apply optimized categories for {aiResults.length} items.</p>
                                     </div>
                                 </div>
-                                <button onClick={applyAllSuggestions} className="btn btn-primary px-4 fw-900 rounded-3 shadow-sm" disabled={aiResults.length === 0}>
+                                <button 
+                                    onClick={applyAllSuggestions} 
+                                    className="btn btn-primary px-4 fw-900 rounded-3 shadow-sm"
+                                    disabled={aiResults.length === 0}
+                                >
                                     Apply All Sugestions
                                 </button>
                             </div>
@@ -439,7 +447,6 @@ const Transactions: React.FC = () => {
                                     const t = transactions.find(x => x.id === res.id);
                                     if (!t) return null;
                                     const isApplied = appliedIds.has(res.id);
-                                    
                                     return (
                                         <div key={res.id} className={`card border rounded-4 transition-all ${isApplied ? 'bg-success bg-opacity-5 opacity-75' : 'bg-white shadow-sm'}`}>
                                             <div className="card-body p-4">
@@ -490,8 +497,10 @@ const Transactions: React.FC = () => {
                                         </div>
                                     );
                                 }) : (
-                                    <div className="text-center py-4 text-muted">
-                                        No individual suggestions could be generated.
+                                    <div className="text-center py-5">
+                                        <AlertTriangle size={32} className="text-warning mb-3" />
+                                        <h6 className="fw-bold">No Suggestions Generated</h6>
+                                        <p className="text-muted small">The AI couldn't find specific tax optimizations for the selected data.</p>
                                     </div>
                                 )}
                             </div>
