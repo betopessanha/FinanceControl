@@ -1,270 +1,370 @@
-
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import Card, { CardContent } from './ui/Card';
-import { TransactionType, EntityType, Transaction } from '../types';
-import { formatCurrency } from '../lib/utils';
-import { Printer, FileText, Briefcase, User, Info, ShieldCheck, Download, Layout, FileSearch, Building2, AlertCircle } from 'lucide-react';
+import { TransactionType, EntityType, Transaction, LegalStructure } from '../types';
+import { formatCurrency, formatDate } from '../lib/utils';
+import { 
+    Printer, FileText, Briefcase, User, Info, ShieldCheck, Download, 
+    Layout, FileSearch, Building2, AlertCircle, ChevronRight, 
+    ArrowLeft, Calendar, ClipboardCheck, Percent, FileCheck, History, MapPin, Search, CheckCircle2, HelpCircle, FileStack
+} from 'lucide-react';
 import { useData } from '../lib/DataContext';
 
-// Official IRS Schedule C Line Mapping (Business)
-const SCHEDULE_C_MAP: Record<string, string> = {
-    'Freight Revenue': 'Line 1: Gross receipts or sales',
-    'Fuel & DEF': 'Line 9: Car and truck expenses',
-    'Tires': 'Line 9: Car and truck expenses',
-    'Insurance Premiums': 'Line 15: Insurance (other than health)',
-    'Loan Interest': 'Line 16b: Other interest',
-    'Professional Services': 'Line 17: Legal and professional services',
-    'Rent / Lease': 'Line 20: Rent or lease',
-    'Repairs & Maintenance': 'Line 21: Repairs and maintenance',
-    'Travel': 'Line 24a: Travel',
-    'Meals & Per Diem': 'Line 24b: Deductible meals',
-    'Tolls & Scales': 'Line 27a: Other expenses',
-    'Dispatch Fees': 'Line 27a: Other expenses',
-};
+type TaxTab = 'Questionnaire' | 'Form1040' | 'Schedules12' | 'ScheduleC' | 'ScheduleSE' | 'QBI' | 'EFile' | 'State' | 'History';
+type MainFormControl = '1040' | '1120S';
 
-// Official IRS Form 1040 Line Mapping (Personal/Individual)
-const FORM_1040_MAP: Record<string, string> = {
-    'Wages': 'Line 1z: Total Wages',
-    'Investment Income': 'Line 2: Tax-exempt/Taxable interest',
-    'Owner Equity (Non-Taxable)': 'Line 0: Equity Movement (Exempt)',
-    'Standard Deduction': 'Line 12: Standard Deduction',
-    'Charitable Contributions': 'Line 12: Itemized Deductions',
-};
-
-interface FormRowProps {
-    line?: string;
-    label: string;
-    value: number;
-    bold?: boolean;
-    indent?: boolean;
-    isTotal?: boolean;
-    isInfoOnly?: boolean;
-    isExempt?: boolean;
+interface Question {
+    id: string;
+    text: string;
+    description?: string;
+    category?: 'General' | 'Deductions' | 'Reporting';
 }
 
-const FormRow: React.FC<FormRowProps> = ({ line, label, value, bold, indent, isTotal, isInfoOnly, isExempt }) => (
-    <div className={`d-flex align-items-baseline py-2 ${indent ? 'ps-4' : ''} ${isTotal ? 'border-top border-dark border-2 mt-2 bg-light bg-opacity-50' : 'border-bottom border-light'}`}>
-        <div className="d-flex align-items-center gap-2" style={{ minWidth: '60px' }}>
-            <span className="text-muted fw-bold" style={{ fontSize: '0.7rem' }}>{line}</span>
-        </div>
-        <div className="flex-grow-1 d-flex align-items-baseline overflow-hidden">
-            <span className={`${bold ? 'fw-800' : 'fw-500'} ${isInfoOnly || isExempt ? 'text-muted italic' : 'text-dark'} small text-uppercase text-truncate`}>
-                {label} {isExempt && <span className="badge bg-primary bg-opacity-10 text-primary fw-900 ms-1" style={{fontSize: '0.5rem'}}>EXEMPT</span>}
-            </span>
-            <div className="flex-grow-1 mx-2 border-bottom border-dotted opacity-25" style={{ borderStyle: 'dotted', height: '14px' }}></div>
-        </div>
-        <div className="text-end" style={{ minWidth: '130px' }}>
-            <span className={`${bold ? 'fw-900 fs-6' : 'fw-700 small'} font-monospace ${isInfoOnly || isExempt ? 'text-muted' : ''}`}>
-                {formatCurrency(value)}
-            </span>
-        </div>
-    </div>
-);
+const FORM_1040_QUESTIONS: Question[] = [
+    { id: '1040_q1', text: "Did you receive any 1099-NEC forms for your trucking services?", description: "Non-employee compensation for independent contractors.", category: 'General' },
+    { id: '1040_q2', text: "Did you materially participate in the operation of this business?", description: "Significant involvement in day-to-day operations.", category: 'General' },
+    { id: '1040_q3', text: "Did you pay any independent contractors more than $600 during the year?", description: "Triggers requirement for filing Form 1099.", category: 'Reporting' },
+    { id: '1040_q4', text: "If yes, did you or will you file the required Forms 1099?", description: "IRS compliance check for 1099-NEC/MISC.", category: 'Reporting' },
+    { id: '1040_q5', text: "Did you use a personal vehicle for business purposes?", description: "Allows for mileage or actual expense deduction.", category: 'Deductions' },
+    { id: '1040_q6', text: "Do you have records/receipts for all meals claimed under Per Diem?", description: "Standard meal allowance for drivers away from home.", category: 'Deductions' },
+    { id: '1040_q7', text: "Did you have a home office used exclusively for your business?", description: "Triggers Schedule C Home Office deduction.", category: 'Deductions' },
+    { id: '1040_q8', text: "Did you purchase any new equipment (trucks, trailers) over $2,500?", description: "Subject to Section 179 or Bonus Depreciation.", category: 'Deductions' },
+    { id: '1040_q9', text: "Was there any change in your accounting method this year?", description: "From Cash to Accrual or vice-versa.", category: 'General' }
+];
 
-const TaxReports: React.FC = () => {
+const FORM_1120S_QUESTIONS: Question[] = [
+    { id: '1120s_q1', text: "Did the corporation change its method of accounting during the year?", description: "Cash to Accrual or vice versa.", category: 'General' },
+    { id: '1120s_q2', text: "Were there any changes in stock ownership among shareholders?", description: "Critical for S-Corp distribution tracking.", category: 'General' },
+    { id: '1120s_q3', text: "Did the corporation pay health insurance for 2%+ shareholders?", description: "Must be included on W-2 to be deductible.", category: 'Deductions' },
+    { id: '1120s_q4', text: "Did the corporation own 20% or more of any other entity?", description: "Related party disclosures.", category: 'Reporting' },
+    { id: '1120s_q5', text: "Was there a distribution of property other than cash?", description: "Triggers gain/loss recognition at corp level.", category: 'Reporting' },
+    { id: '1120s_q6', text: "Did you make payments requiring 1099-NEC filing for the S-Corp?", description: "Corporate compliance for contractors.", category: 'Reporting' },
+    { id: '1120s_q7', text: "Were any loans made between the corp and shareholders?", description: "Interest rates must be at AFR levels.", category: 'General' },
+    { id: '1120s_q8', text: "Did the corporation pay reasonable officer compensation (W-2)?", description: "IRS requirement for S-Corp status.", category: 'Deductions' }
+];
+
+const TaxReports: React.FC<{ setActivePage?: (p: any) => void }> = ({ setActivePage }) => {
     const { transactions, businessEntities, accounts, activeEntityId } = useData();
     const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
+    const [activeForm, setActiveForm] = useState<MainFormControl>('1040');
+    const [activeTab, setActiveTab] = useState<TaxTab>('Questionnaire');
+    const [answers, setAnswers] = useState<Record<string, boolean>>({});
 
     const activeEntity = useMemo(() => 
         businessEntities.find(e => e.id === activeEntityId) || businessEntities[0]
     , [activeEntityId, businessEntities]);
 
-    // Available years from both transactions and current date
-    const availableYears = useMemo(() => {
+    useEffect(() => {
+        if (activeEntity?.structure === 'S-Corp') setActiveForm('1120S');
+        else setActiveForm('1040');
+    }, [activeEntity]);
+
+    // Explicitly typed as number[] to avoid 'unknown' inference in map calls
+    const availableYears: number[] = useMemo(() => {
         const transYears = transactions.map(t => new Date(t.date).getFullYear());
         const years = Array.from<number>(new Set([...transYears, new Date().getFullYear()])).sort((a, b) => b - a);
         return years;
     }, [transactions]);
 
-    const taxCalculation = useMemo(() => {
-        // 1. Get ONLY accounts belonging to the active entity
+    const taxData = useMemo(() => {
         const entityAccounts = accounts.filter(a => a.businessEntityId === activeEntityId);
         const accountIds = entityAccounts.map(a => a.id);
         
-        // 2. Filter transactions for the selected year and entity accounts
         const filtered = transactions.filter(t => {
-            const yearMatch = new Date(t.date).getFullYear() === selectedYear;
+            const date = new Date(t.date);
+            const yearMatch = date.getFullYear() === selectedYear;
             const accountMatch = accountIds.includes(t.accountId) || (t.toAccountId && accountIds.includes(t.toAccountId));
             return yearMatch && accountMatch;
         });
 
-        // 3. Logic for Business (Schedule C) vs Personal (1040) depends on activeEntity.type
-        const isBusiness = activeEntity?.type === EntityType.BUSINESS;
-        const currentMap = isBusiness ? SCHEDULE_C_MAP : FORM_1040_MAP;
-
-        let taxableIncome = 0;
-        let expenses = 0;
-        let equityInflows = 0;
-        const lineData: Record<string, number> = {};
+        let grossRevenue = 0;
+        let totalExpenses = 0;
+        const categoryTotals: Record<string, number> = {};
 
         filtered.forEach(t => {
-            const amount = Number(t.amount) || 0;
-            const catName = t.category?.name || 'Uncategorized';
-            
-            // Map line items based on category name
-            const line = currentMap[catName] || (t.type === TransactionType.INCOME ? 'Other Income' : 'Other Expenses');
-
+            const val = Number(t.amount) || 0;
             if (t.type === TransactionType.INCOME) {
-                // Check for non-taxable equity (Owner transfer)
-                if (catName === 'Owner Equity (Non-Taxable)') {
-                    equityInflows += amount;
-                } else {
-                    taxableIncome += amount;
-                    lineData[line] = (lineData[line] || 0) + amount;
-                }
-            } else if (t.type === TransactionType.EXPENSE) {
-                // Only count tax deductible expenses for totals
-                if (t.category?.isTaxDeductible) {
-                    expenses += amount;
-                    lineData[line] = (lineData[line] || 0) + amount;
-                } else {
-                    lineData['Non-Deductible Expenses'] = (lineData['Non-Deductible Expenses'] || 0) + amount;
-                }
+                grossRevenue += val;
+            } else if (t.type === TransactionType.EXPENSE && t.category?.isTaxDeductible) {
+                totalExpenses += val;
+                const catName = t.category.name;
+                categoryTotals[catName] = (categoryTotals[catName] || 0) + val;
             }
-            // Transfers between accounts of the same entity are ignored for Tax P&L
         });
 
-        return { taxableIncome, expenses, net: taxableIncome - expenses, equityInflows, lineData, isBusiness };
-    }, [transactions, activeEntityId, selectedYear, accounts, activeEntity]);
+        return { grossRevenue, totalExpenses, netProfit: grossRevenue - totalExpenses, categoryTotals, transactionCount: filtered.length };
+    }, [transactions, activeEntityId, selectedYear, accounts]);
+
+    const handleAnswer = (qId: string, answer: boolean) => {
+        setAnswers(prev => ({ ...prev, [qId]: answer }));
+    };
+
+    const currentQuestions = activeForm === '1040' ? FORM_1040_QUESTIONS : FORM_1120S_QUESTIONS;
+    const answeredCount = currentQuestions.filter(q => answers[q.id] !== undefined).length;
+    const progressPercent = Math.round((answeredCount / currentQuestions.length) * 100);
 
     return (
         <div className="container-fluid py-3 animate-slide-up pb-5 mb-5">
-            <div className="d-flex flex-column flex-md-row justify-content-between align-items-md-center mb-4 gap-3 d-print-none">
+            {/* Header Area */}
+            <div className="d-flex flex-column flex-md-row justify-content-between align-items-md-center mb-4 gap-3">
                 <div className="d-flex align-items-center gap-3">
-                    <div className={`p-2 rounded-3 ${taxCalculation.isBusiness ? 'bg-black text-white' : 'bg-primary text-white'}`}>
-                        {taxCalculation.isBusiness ? <Briefcase size={20}/> : <User size={20}/>}
+                    <button onClick={() => setActivePage?.('Dashboard')} className="btn btn-white border shadow-sm p-2 rounded-3">
+                        <ArrowLeft size={18} />
+                    </button>
+                    <div>
+                        <h1 className="fw-900 fs-3 mb-0 text-black tracking-tight">Tax Reports & Forms</h1>
+                        <p className="text-muted small mb-0 d-flex align-items-center gap-2">
+                            <Calendar size={14} /> Complete tax forms for Federal & State filing - {selectedYear}
+                        </p>
                     </div>
-                    <h5 className="fw-900 mb-0">
-                        {taxCalculation.isBusiness ? 'Schedule C (Business)' : 'Personal Tax Summary'}
-                    </h5>
                 </div>
-
                 <div className="d-flex gap-2">
-                    <select className="form-select border-0 shadow-sm fw-bold rounded-3" value={selectedYear} onChange={e => setSelectedYear(Number(e.target.value))}>
-                        {availableYears.map(y => <option key={y} value={y}>{y} Fiscal Year</option>)}
+                    <select className="form-select border-0 shadow-sm fw-bold rounded-3 bg-white" style={{width: '120px'}} value={selectedYear} onChange={e => setSelectedYear(Number(e.target.value))}>
+                        {availableYears.map(y => <option key={y} value={y}>{y}</option>)}
                     </select>
-                    <button className="btn btn-white border shadow-sm px-3" onClick={() => window.print()} title="Print Report"><Printer size={18}/></button>
+                    <button className="btn btn-success border-0 shadow-sm px-4 fw-bold d-flex align-items-center gap-2 rounded-3" style={{backgroundColor: '#059669'}}>
+                        <Download size={18}/> Export to CSV
+                    </button>
                 </div>
             </div>
 
-            <div className="row g-4">
-                <div className="col-lg-8">
-                    <div className="card border-0 shadow-lg rounded-4 overflow-hidden" style={{ backgroundColor: '#fdfdfd' }}>
-                        <div className="p-4 bg-white border-bottom border-light">
-                            <div className="d-flex justify-content-between align-items-center">
-                                <div>
-                                    <h4 className="fw-900 mb-0">{activeEntity?.name}</h4>
-                                    <div className="d-flex align-items-center gap-2 mt-1">
-                                        <span className="text-muted small fw-bold text-uppercase ls-1">Tax ID: {activeEntity?.ein || activeEntity?.ssn || 'PENDING'}</span>
-                                        <span className="text-muted opacity-25">|</span>
-                                        <span className="text-muted small fw-bold text-uppercase ls-1">{selectedYear} Filing</span>
-                                    </div>
+            {/* Main Form Selection Cards */}
+            <div className="row g-4 mb-4">
+                <div className="col-12 col-lg-6">
+                    <div 
+                        onClick={() => setActiveForm('1040')}
+                        className={`card h-100 border-2 cursor-pointer transition-all rounded-4 ${activeForm === '1040' ? 'border-primary shadow-lg bg-white' : 'border-transparent bg-white opacity-75'}`}
+                        style={{ minHeight: '160px' }}
+                    >
+                        <div className="card-body p-4">
+                            <div className="d-flex align-items-center gap-3 mb-4">
+                                <div className={`p-3 rounded-3 ${activeForm === '1040' ? 'bg-primary bg-opacity-10 text-primary' : 'bg-light text-muted'}`}>
+                                    <User size={24} />
                                 </div>
-                                <div className="text-end d-none d-sm-block">
-                                    <div className="badge bg-light text-dark border fw-bold">{activeEntity?.structure}</div>
+                                <div className="flex-grow-1">
+                                    <h5 className="fw-900 mb-0">Form 1040</h5>
+                                    <p className="text-muted small mb-0">Individual Income Tax Return</p>
                                 </div>
+                                {activeForm === '1040' && <ChevronRight size={20} className="text-primary" />}
                             </div>
-                        </div>
-
-                        <div className="p-4 p-md-5">
-                            {taxCalculation.isBusiness ? (
-                                <>
-                                    <div className="mb-5">
-                                        <h6 className="bg-light p-2 rounded-2 fw-900 small text-uppercase ls-1 mb-3">Part I: Income</h6>
-                                        <FormRow line="1" label="Gross receipts or sales" value={taxCalculation.lineData['Line 1: Gross receipts or sales'] || taxCalculation.taxableIncome} />
-                                        {/* Other Income logic can go here if lineData has other entries */}
-                                        <FormRow line="5" label="Gross Profit" value={taxCalculation.taxableIncome} bold />
+                            <div className="row g-2">
+                                {[
+                                    { id: '1040', label: '1040', icon: <User size={14}/> },
+                                    { id: 'SchC', label: 'Sch C', icon: <FileText size={14}/> },
+                                    { id: 'SchSE', label: 'Sch SE', icon: <Percent size={14}/> },
+                                    { id: 'State', label: 'State', icon: <MapPin size={14}/> }
+                                ].map(item => (
+                                    <div key={item.id} className="col-3">
+                                        <div className="bg-light rounded-3 p-2 text-center border">
+                                            <div className="text-muted mb-1">{item.icon}</div>
+                                            <div className="fw-bold" style={{fontSize: '0.65rem'}}>{item.label}</div>
+                                        </div>
                                     </div>
-
-                                    <div className="mb-5">
-                                        <h6 className="bg-light p-2 rounded-2 fw-900 small text-uppercase ls-1 mb-3">Part II: Expenses</h6>
-                                        {Object.entries(taxCalculation.lineData).map(([label, val]) => {
-                                            if (label.startsWith('Line')) {
-                                                const lineNum = label.split(':')[0].replace('Line ', '');
-                                                return <FormRow key={label} line={lineNum} label={label.split(': ')[1]} value={val} />;
-                                            }
-                                            return null;
-                                        })}
-                                        {/* Fallback for unmapped deductible expenses */}
-                                        {taxCalculation.lineData['Other Expenses'] > 0 && (
-                                            <FormRow line="27a" label="Other Expenses (Misc)" value={taxCalculation.lineData['Other Expenses']} />
-                                        )}
-                                        <FormRow line="28" label="Total Deductible Expenses" value={taxCalculation.expenses} bold isTotal />
-                                    </div>
-
-                                    <div className="mt-4 p-4 rounded-4 bg-black text-white shadow-lg">
-                                        <FormRow line="31" label="Net Taxable Profit" value={taxCalculation.net} bold />
-                                    </div>
-                                </>
-                            ) : (
-                                <>
-                                    <div className="mb-5">
-                                        <h6 className="bg-primary bg-opacity-10 p-2 rounded-2 fw-900 small text-uppercase text-primary ls-1 mb-3">Taxable Income Summary</h6>
-                                        <FormRow line="1z" label="Total Wages/Salaries" value={taxCalculation.lineData['Line 1z: Total Wages'] || 0} />
-                                        <FormRow line="-" label="Other Taxable Income" value={taxCalculation.taxableIncome - (taxCalculation.lineData['Line 1z: Total Wages'] || 0)} />
-                                        <FormRow line="9" label="Adjusted Gross Income (Taxable)" value={taxCalculation.taxableIncome} bold isTotal />
-                                    </div>
-
-                                    <div className="mb-5">
-                                        <h6 className="bg-primary bg-opacity-10 p-2 rounded-2 fw-900 small text-uppercase text-primary ls-1 mb-3">Exempt Movement (Non-Taxable)</h6>
-                                        <FormRow line="-" label="Owner Equity Inflow" value={taxCalculation.equityInflows} isExempt />
-                                        <p className="text-muted small mt-2 italic">Equity transfers from linked business accounts are excluded from taxable totals.</p>
-                                    </div>
-
-                                    <div className="mt-4 p-4 rounded-4 bg-primary text-white shadow-lg">
-                                        <FormRow line="15" label="Est. Taxable Base" value={Math.max(0, taxCalculation.taxableIncome)} bold />
-                                    </div>
-                                </>
-                            )}
+                                ))}
+                            </div>
+                            <p className="text-muted mt-3 mb-0" style={{fontSize: '0.7rem'}}>Personal income tax forms for W-2, 1099, self-employment income, and state taxes.</p>
                         </div>
                     </div>
                 </div>
 
-                <div className="col-lg-4">
-                    <Card className="border-0 shadow-sm rounded-4 bg-white mb-4">
-                        <CardContent className="p-4">
-                            <div className="d-flex align-items-center gap-2 mb-3 text-primary">
-                                <ShieldCheck size={20}/>
-                                <h6 className="fw-900 mb-0 small text-uppercase ls-1">Compliance Check</h6>
+                <div className="col-12 col-lg-6">
+                    <div 
+                        onClick={() => setActiveForm('1120S')}
+                        className={`card h-100 border-2 cursor-pointer transition-all rounded-4 ${activeForm === '1120S' ? 'border-primary shadow-lg bg-white' : 'border-transparent bg-white opacity-75'}`}
+                        style={{ minHeight: '160px' }}
+                    >
+                        <div className="card-body p-4">
+                            <div className="d-flex align-items-center gap-3 mb-4">
+                                <div className={`p-3 rounded-3 ${activeForm === '1120S' ? 'bg-purple bg-opacity-10 text-purple' : 'bg-light text-muted'}`}>
+                                    <Building2 size={24} />
+                                </div>
+                                <div className="flex-grow-1">
+                                    <h5 className="fw-900 mb-0">Form 1120S</h5>
+                                    <p className="text-muted small mb-0">S-Corporation Tax Return</p>
+                                </div>
+                                {activeForm === '1120S' && <ChevronRight size={20} className="text-primary" />}
                             </div>
-                            <div className="d-flex flex-column gap-3">
-                                <div className="p-3 bg-light rounded-3">
-                                    <small className="text-muted d-block fw-bold" style={{fontSize: '0.6rem'}}>DEDUCTIBILITY RATE</small>
-                                    <div className="d-flex justify-content-between align-items-end">
-                                        <span className="fw-900 fs-4">{taxCalculation.taxableIncome > 0 ? Math.round((taxCalculation.expenses / taxCalculation.taxableIncome) * 100) : 0}%</span>
-                                        <span className="small text-muted mb-1">of revenue</span>
+                            <div className="row g-2">
+                                {[
+                                    { id: '1120S', label: '1120S', icon: <Briefcase size={14}/> },
+                                    { id: 'K1', label: 'K-1', icon: <FileCheck size={14}/> }
+                                ].map(item => (
+                                    <div key={item.id} className="col-3">
+                                        <div className="bg-light rounded-3 p-2 text-center border">
+                                            <div className="text-muted mb-1">{item.icon}</div>
+                                            <div className="fw-bold" style={{fontSize: '0.65rem'}}>{item.label}</div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                            <p className="text-muted mt-3 mb-0" style={{fontSize: '0.7rem'}}>S-Corporation income tax return and Schedule K-1 for shareholder distributions.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {/* Tab Navigation Section */}
+            <div className="card border-0 shadow-sm rounded-4 overflow-hidden mb-4">
+                <div className="bg-primary bg-opacity-5 p-3 px-4 border-bottom border-primary border-opacity-10 d-flex align-items-center gap-2">
+                    <User size={18} className="text-primary" />
+                    <span className="fw-800 text-primary small">Form {activeForm} - {activeForm === '1040' ? 'Individual' : 'S-Corp'} Tax Return & Schedules</span>
+                </div>
+                <div className="p-1 px-3 bg-light border-bottom d-flex gap-1 overflow-auto no-scrollbar">
+                    {[
+                        { id: 'Questionnaire', label: 'Questionnaire', icon: <ClipboardCheck size={14}/> },
+                        { id: 'Form1040', label: activeForm === '1040' ? 'Form 1040' : 'Form 1120S', icon: <FileSearch size={14}/> },
+                        { id: 'Schedules12', label: 'Schedules 1 & 2', icon: <Layout size={14}/> },
+                        { id: 'ScheduleC', label: 'Schedule C', icon: <Briefcase size={14}/> },
+                        { id: 'ScheduleSE', label: 'Schedule SE', icon: <Percent size={14}/> },
+                        { id: 'EFile', label: 'E-File (8879)', icon: <FileCheck size={14}/> },
+                        { id: 'History', label: 'History', icon: <History size={14}/> }
+                    ].map(tab => (
+                        <button 
+                            key={tab.id}
+                            onClick={() => setActiveTab(tab.id as TaxTab)}
+                            className={`btn btn-sm py-2 px-3 border-0 rounded-3 d-flex align-items-center gap-2 fw-bold whitespace-nowrap ${activeTab === tab.id ? 'bg-white shadow-sm text-black' : 'text-muted'}`}
+                        >
+                            {tab.icon}
+                            {tab.label}
+                        </button>
+                    ))}
+                </div>
+
+                <div className="card-body p-4 bg-white">
+                    {activeTab === 'Questionnaire' && (
+                        <div className="animate-slide-up">
+                            <div className="alert alert-primary bg-primary bg-opacity-5 border-0 rounded-4 p-4 d-flex justify-content-between align-items-center">
+                                <div className="d-flex gap-3">
+                                    <ClipboardCheck className="text-primary flex-shrink-0" size={24} />
+                                    <div>
+                                        <h6 className="fw-900 text-black mb-1">Tax Questionnaire - {activeForm === '1040' ? 'Personal & Sole Prop' : 'S-Corp Compliance'}</h6>
+                                        <p className="small mb-0 text-muted">Complete these questions to determine required filings and eligible tax credits.</p>
                                     </div>
                                 </div>
-                                <div className="p-3 bg-light rounded-3">
-                                    <small className="text-muted d-block fw-bold" style={{fontSize: '0.6rem'}}>REPORT STATUS</small>
-                                    <span className="badge bg-success bg-opacity-10 text-success fw-900 px-3 py-1 mt-1 border-0">READY FOR FILING</span>
+                                <div className="text-end">
+                                    <div className="fw-900 fs-4 mb-0 text-primary">{progressPercent}%</div>
+                                    <small className="text-muted fw-bold" style={{fontSize: '0.6rem'}}>COMPLETED</small>
                                 </div>
                             </div>
-                        </CardContent>
-                    </Card>
-
-                    <Card className="border-0 shadow-sm rounded-4 bg-subtle">
-                        <CardContent className="p-4">
-                            <h6 className="fw-900 text-black mb-3 small text-uppercase ls-1 d-flex align-items-center gap-2">
-                                <Info size={16} className="text-primary"/> IRS Reporting Logic
-                            </h6>
-                            <p className="text-muted small mb-0">
-                                This report maps your <strong>FleetLedger</strong> categories to the official lines of <strong>Schedule C</strong>. 
-                                <br/><br/>
-                                Only transactions with categories marked as <strong>"Tax Deductible"</strong> contribute to total expenses. Ensure your "Chart of Accounts" is correctly configured.
-                            </p>
-                        </CardContent>
-                    </Card>
-                    
-                    {taxCalculation.net < 0 && (
-                        <div className="alert alert-warning border-0 shadow-sm rounded-4 p-4 mt-4 d-flex gap-3">
-                            <AlertCircle className="text-warning flex-shrink-0" size={24} />
-                            <div>
-                                <h6 className="fw-bold mb-1">Loss Reported</h6>
-                                <p className="small mb-0 text-muted">A net loss in {selectedYear} may be used to offset future income (NOL Carryforward). Consult your tax professional.</p>
+                            
+                            <div className="mt-4">
+                                {['General', 'Deductions', 'Reporting'].map((cat) => {
+                                    const catQuestions = currentQuestions.filter(q => q.category === cat);
+                                    if (catQuestions.length === 0) return null;
+                                    return (
+                                        <div key={cat} className="mb-5">
+                                            <h6 className="fw-800 mb-3 text-muted small text-uppercase ls-1">{cat} Compliance Info</h6>
+                                            <div className="d-flex flex-column gap-3">
+                                                {catQuestions.map((q) => (
+                                                    <div key={q.id} className="p-3 bg-light rounded-4 d-flex justify-content-between align-items-center border transition-all hover-shadow-sm">
+                                                        <div className="d-flex align-items-center gap-3">
+                                                            <div className={`p-2 rounded-circle ${answers[q.id] !== undefined ? 'bg-success bg-opacity-10 text-success' : 'bg-white text-muted'}`}>
+                                                                {answers[q.id] !== undefined ? <CheckCircle2 size={16} /> : <HelpCircle size={16} />}
+                                                            </div>
+                                                            <div>
+                                                                <span className="fw-700 small text-dark d-block">{q.text}</span>
+                                                                {q.description && <small className="text-muted" style={{fontSize: '0.65rem'}}>{q.description}</small>}
+                                                            </div>
+                                                        </div>
+                                                        <div className="btn-group shadow-sm p-1 bg-white border rounded-3">
+                                                            <button 
+                                                                type="button"
+                                                                onClick={() => handleAnswer(q.id, true)} 
+                                                                className={`btn btn-sm px-4 fw-bold transition-all ${answers[q.id] === true ? 'btn-success text-white shadow-sm' : 'btn-white border-0 text-muted'}`}
+                                                            >
+                                                                Yes
+                                                            </button>
+                                                            <button 
+                                                                type="button"
+                                                                onClick={() => handleAnswer(q.id, false)} 
+                                                                className={`btn btn-sm px-4 fw-bold transition-all ${answers[q.id] === false ? 'btn-black text-white shadow-sm' : 'btn-white border-0 text-muted'}`}
+                                                            >
+                                                                No
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
                             </div>
                         </div>
                     )}
+
+                    {activeTab === 'ScheduleC' && (
+                        <div className="animate-slide-up">
+                            <div className="d-flex justify-content-between align-items-end mb-4">
+                                <div>
+                                    <h5 className="fw-900 mb-1">Schedule C (Form 1040)</h5>
+                                    <p className="text-muted small mb-0">Profit or Loss From Business (Sole Proprietorship)</p>
+                                </div>
+                                <div className="text-end">
+                                    <small className="text-muted d-block fw-bold" style={{fontSize: '0.6rem'}}>TOTAL DEDUCTIONS</small>
+                                    <h4 className="fw-900 text-danger mb-0">{formatCurrency(taxData.totalExpenses)}</h4>
+                                </div>
+                            </div>
+
+                            <div className="table-responsive">
+                                <table className="table table-hover align-middle">
+                                    <thead className="bg-light">
+                                        <tr>
+                                            <th className="ps-4 py-3 border-0 fw-800 small text-muted text-uppercase">Form Line</th>
+                                            <th className="py-3 border-0 fw-800 small text-muted text-uppercase">Description</th>
+                                            <th className="py-3 border-0 fw-800 small text-muted text-uppercase text-end">Amount</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr>
+                                            <td className="ps-4 py-3 fw-bold text-muted">Line 1</td>
+                                            <td className="py-3 fw-800">Gross receipts or sales</td>
+                                            <td className="py-3 text-end fw-900 text-success">{formatCurrency(taxData.grossRevenue)}</td>
+                                        </tr>
+                                        {Object.entries(taxData.categoryTotals).map(([name, val], idx) => (
+                                            <tr key={idx}>
+                                                <td className="ps-4 py-3 fw-bold text-muted">Line {idx + 8}</td>
+                                                <td className="py-3 fw-600">{name}</td>
+                                                <td className="py-3 text-end fw-800">{formatCurrency(val)}</td>
+                                            </tr>
+                                        ))}
+                                        <tr className="bg-light bg-opacity-50">
+                                            <td className="ps-4 py-3 fw-900" colSpan={2}>Net Profit or (Loss)</td>
+                                            <td className={`py-3 text-end fw-900 fs-5 ${taxData.netProfit >= 0 ? 'text-success' : 'text-danger'}`}>{formatCurrency(taxData.netProfit)}</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    )}
+
+                    {activeTab !== 'Questionnaire' && activeTab !== 'ScheduleC' && (
+                        <div className="text-center py-5">
+                            <FileSearch size={48} className="text-muted opacity-25 mb-3" />
+                            <h6 className="fw-bold">Preview not available</h6>
+                            <p className="text-muted small">This form is automatically generated during final export based on your ledger data.</p>
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            {/* Verification Footer */}
+            <div className="card border-0 shadow-sm rounded-4 bg-dark text-white p-4">
+                <div className="d-flex flex-column flex-md-row justify-content-between align-items-center gap-3">
+                    <div className="d-flex align-items-center gap-3">
+                        <div className={`p-2 rounded-3 ${progressPercent === 100 ? 'bg-success text-white' : 'bg-primary bg-opacity-20 text-primary'}`}>
+                            <ShieldCheck size={24} />
+                        </div>
+                        <div>
+                            <h6 className="fw-900 mb-0">Compliance Check Status</h6>
+                            <p className="small mb-0 text-white text-opacity-50">Verified mapping for {taxData.transactionCount} transactions. {progressPercent}% of questionnaire complete.</p>
+                        </div>
+                    </div>
+                    <div className="d-flex gap-3 w-100 w-md-auto">
+                        <div className="text-end d-none d-md-block">
+                            <small className="text-white text-opacity-50 d-block fw-bold" style={{fontSize: '0.6rem'}}>DEDUCTIBILITY RATE</small>
+                            <span className="fw-900">{taxData.grossRevenue > 0 ? Math.round((taxData.totalExpenses / taxData.grossRevenue) * 100) : 0}% of revenue</span>
+                        </div>
+                        <button className="btn btn-primary px-4 fw-900 rounded-3 shadow" disabled={progressPercent < 50}>Lock and Archive Period</button>
+                    </div>
                 </div>
             </div>
         </div>

@@ -58,6 +58,12 @@ const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage, isOpen, se
 
   const activeEntity = businessEntities.find(e => e.id === activeEntityId) || businessEntities[0];
 
+  // Helper to switch quickly between types
+  const handleTypeSwitch = (type: EntityType) => {
+    const target = businessEntities.find(e => e.type === type);
+    if (target) setActiveEntityId(target.id);
+  };
+
   return (
     <>
       {isOpen && (
@@ -73,16 +79,29 @@ const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage, isOpen, se
             <h5 className="mb-0 fw-800 tracking-tight text-black">FLEET<span className="text-muted">LEDGER</span></h5>
           </div>
 
-          {/* Entity Selector (Global Context) */}
+          {/* Quick Context Switcher Buttons */}
+          <div className="d-flex gap-2 p-1 bg-light rounded-4 border mb-4 shadow-sm">
+            <button 
+              onClick={() => handleTypeSwitch(EntityType.BUSINESS)}
+              className={`btn btn-sm flex-fill d-flex align-items-center justify-content-center gap-2 py-2 rounded-3 transition-all ${activeEntity?.type === EntityType.BUSINESS ? 'btn-black shadow text-white' : 'btn-link text-muted text-decoration-none fw-bold'}`}
+            >
+              <Briefcase size={14} /> <span style={{fontSize: '0.75rem'}}>BUSINESS</span>
+            </button>
+            <button 
+              onClick={() => handleTypeSwitch(EntityType.PERSONAL)}
+              className={`btn btn-sm flex-fill d-flex align-items-center justify-content-center gap-2 py-2 rounded-3 transition-all ${activeEntity?.type === EntityType.PERSONAL ? 'btn-primary shadow text-white' : 'btn-link text-muted text-decoration-none fw-bold'}`}
+            >
+              <User size={14} /> <span style={{fontSize: '0.75rem'}}>PERSONAL</span>
+            </button>
+          </div>
+
+          {/* Entity Selector Dropdown (Sub-selection if multiple companies) */}
           <div className="dropdown w-100 mb-2">
-            <button className="btn btn-white border w-100 d-flex align-items-center justify-content-between p-2 rounded-3 shadow-sm" type="button" data-bs-toggle="dropdown">
+            <button className="btn btn-white border w-100 d-flex align-items-center justify-content-between p-2 rounded-3 shadow-sm border-0 bg-subtle" type="button" data-bs-toggle="dropdown">
               <div className="d-flex align-items-center gap-2 overflow-hidden">
-                <div className={`p-1 rounded-2 ${activeEntity?.type === EntityType.BUSINESS ? 'bg-dark text-white' : 'bg-primary text-white'}`}>
-                  {activeEntity?.type === EntityType.BUSINESS ? <Briefcase size={14}/> : <User size={14}/>}
-                </div>
                 <div className="text-start overflow-hidden">
-                  <div className="fw-800 small text-truncate" style={{maxWidth: '120px'}}>{activeEntity?.name}</div>
-                  <div className="text-muted" style={{fontSize: '0.6rem'}}>{activeEntity?.type}</div>
+                  <div className="fw-800 small text-truncate" style={{maxWidth: '150px'}}>{activeEntity?.name}</div>
+                  <div className="text-muted" style={{fontSize: '0.6rem'}}>{activeEntity?.taxForm}</div>
                 </div>
               </div>
               <ChevronDown size={14} className="text-muted" />
@@ -91,8 +110,8 @@ const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage, isOpen, se
               {businessEntities.map(ent => (
                 <li key={ent.id}>
                   <button className={`dropdown-item rounded-2 d-flex align-items-center gap-2 py-2 ${ent.id === activeEntityId ? 'bg-light fw-bold' : ''}`} onClick={() => setActiveEntityId(ent.id)}>
-                    {ent.type === EntityType.BUSINESS ? <Briefcase size={14}/> : <User size={14}/>}
-                    {ent.name}
+                    {ent.type === EntityType.BUSINESS ? <Briefcase size={14} className="text-dark"/> : <User size={14} className="text-primary"/>}
+                    <span className="small">{ent.name}</span>
                   </button>
                 </li>
               ))}
