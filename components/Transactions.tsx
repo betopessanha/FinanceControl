@@ -8,25 +8,14 @@ import {
     Sparkles, FileText, Check, AlertCircle, ArrowRight, Download, Upload, 
     FileJson, Info, ArrowUpRight, ArrowDownRight, Tag, ArrowRightLeft, 
     X, Filter, CheckSquare, Square, Trash, BrainCircuit, Zap, RefreshCw, CheckCircle2,
-    AlertTriangle
+    AlertTriangle, FileType
 } from 'lucide-react';
 import Modal from './ui/Modal';
 import { useData } from '../lib/DataContext';
 import ExportMenu from './ui/ExportMenu';
 import { GoogleGenAI, Type } from "@google/genai";
 
-// Define the AIStudio interface to match the global type name expected by the environment
-interface AIStudio {
-  hasSelectedApiKey: () => Promise<boolean>;
-  openSelectKey: () => Promise<void>;
-}
-
-// Extend the global Window interface using the AIStudio type to avoid declaration conflicts
-declare global {
-  interface Window {
-    aistudio: AIStudio;
-  }
-}
+// Removed local AIStudio interface and window extension as they conflict with global types
 
 interface AISuggestion {
     id: string;
@@ -35,6 +24,15 @@ interface AISuggestion {
     reason: string;
     confidence: number;
     advantage: string;
+}
+
+interface ExtractedTransaction {
+    date: string;
+    description: string;
+    amount: number;
+    type: TransactionType;
+    suggestedCategoryId?: string;
+    suggestedCategoryName?: string;
 }
 
 const Transactions: React.FC = () => {
@@ -53,12 +51,19 @@ const Transactions: React.FC = () => {
     const [isAIModalOpen, setIsAIModalOpen] = useState(false);
     const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
 
-    // Bulk selection state
+    // Bulk selection state for auditing existing entries
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
     const [aiResults, setAiResults] = useState<AISuggestion[]>([]);
     const [isAnalyzing, setIsAnalyzing] = useState(false);
     const [aiError, setAiError] = useState<string | null>(null);
     const [appliedIds, setAppliedIds] = useState<Set<string>>(new Set());
+
+    // Import State
+    const [importStep, setImportStep] = useState<'input' | 'preview'>('input');
+    const [importRawText, setImportRawText] = useState('');
+    const [importAccountId, setImportAccountId] = useState('');
+    const [extractedTransactions, setExtractedTransactions] = useState<ExtractedTransaction[]>([]);
+    const [isImporting, setIsImporting] = useState(false);
 
     const [formData, setFormData] = useState<Omit<Transaction, 'id'>>({
         date: new Date().toISOString().split('T')[0],
@@ -136,46 +141,20 @@ const Transactions: React.FC = () => {
         const selectedTrans = transactions.filter(t => selectedIds.has(t.id));
         
         try {
-            // Check for API Key selection in host environment
-            if (!process.env.API_KEY && window.aistudio) {
-                const hasKey = await window.aistudio.hasSelectedApiKey();
-                if (!hasKey) {
-                    await window.aistudio.openSelectKey();
-                    // Proceed after opening dialog - assume key will be available via process.env.API_KEY injected
-                }
+            // Fix: Cast window to any for aistudio access to bypass declaration issues
+            const win = window as any;
+            if (!process.env.API_KEY && win.aistudio) {
+                const hasKey = await win.aistudio.hasSelectedApiKey();
+                if (!hasKey) await win.aistudio.openSelectKey();
             }
+            if (!process.env.API_KEY) throw new Error("API Key is required.");
 
-            if (!process.env.API_KEY) {
-                throw new Error("API Key is not configured. Please select or provide an API key in the host settings.");
-            }
-
-            // Create fresh instance to ensure current API Key is used
             const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-            
-            // Provide exact category context
-            const categoryList = categories.map(c => ({ 
-                id: c.id, 
-                name: c.name, 
-                type: c.type, 
-                isDeductible: c.isTaxDeductible 
-            }));
+            const categoryList = categories.map(c => ({ id: c.id, name: c.name }));
 
-            const prompt = `Act as a Senior CPA for the US Trucking Industry. 
-            Analyze THESE ${selectedTrans.length} specific transactions and assign the best category for EACH one from the provided system categories.
-            
-            SYSTEM CATEGORIES:
-            ${JSON.stringify(categoryList)}
-            
-            TRANSACTIONS TO AUDIT:
-            ${selectedTrans.map(t => `[ID: ${t.id}] Description: "${t.description}", Amount: ${t.amount}, Current Category: "${t.category?.name || 'None'}"`).join('\n')}
-            
-            TASK:
-            Return a JSON ARRAY where every transaction ID above has a suggestion.
-            Use the exact Category ID from the SYSTEM CATEGORIES list.
-            Reasoning should be based on IRS Publication 463 or Schedule C rules for trucking.
-            
-            OUTPUT FORMAT:
-            [{ "id": "trans_id", "suggestedCategoryId": "cat_id", "suggestedCategoryName": "cat_name", "reason": "why...", "confidence": 0.95, "advantage": "100% Deductible" }]`;
+            const prompt = `Analyze these transactions and suggest the best category for each.
+            Categories: ${JSON.stringify(categoryList)}
+            Transactions: ${JSON.stringify(selectedTrans)}`;
 
             const response = await ai.models.generateContent({
                 model: 'gemini-3-flash-preview',
@@ -202,29 +181,100 @@ const Transactions: React.FC = () => {
 
             const textOutput = response.text;
             if (!textOutput) throw new Error("AI returned an empty response.");
-            
-            const suggestions: AISuggestion[] = JSON.parse(textOutput);
-            setAiResults(suggestions);
+            setAiResults(JSON.parse(textOutput));
         } catch (e: any) {
-            console.error("AI Analysis failed", e);
-            if (e.message?.includes("entity was not found")) {
-                if (window.aistudio) await window.aistudio.openSelectKey();
-                setAiError("API Key session expired. Please select your API Key again.");
-            } else {
-                setAiError(e.message || "Failed to connect to AI Auditor. Ensure your host environment provides a valid API Key.");
-            }
+            setAiError(e.message || "Failed to analyze.");
         } finally {
             setIsAnalyzing(false);
         }
     };
 
+    const handleImportAI = async () => {
+        if (!importRawText || !importAccountId) return;
+        
+        setIsImporting(true);
+        setAiError(null);
+        
+        try {
+            // Fix: Cast window to any for aistudio access
+            const win = window as any;
+            if (!process.env.API_KEY && win.aistudio) {
+                await win.aistudio.openSelectKey();
+            }
+            if (!process.env.API_KEY) throw new Error("API Key required.");
+
+            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+            const categoryList = categories.map(c => ({ id: c.id, name: c.name, type: c.type }));
+
+            const prompt = `Extract financial transactions from this raw text (like a bank statement):
+            "${importRawText}"
+            
+            Return a JSON array of objects.
+            Map them to these categories if possible: ${JSON.stringify(categoryList)}
+            
+            Schema: [{ "date": "YYYY-MM-DD", "description": "vendor", "amount": 0.00, "type": "Income|Expense", "suggestedCategoryId": "cat_id", "suggestedCategoryName": "cat_name" }]`;
+
+            const response = await ai.models.generateContent({
+                model: 'gemini-3-flash-preview',
+                contents: prompt,
+                config: { 
+                    responseMimeType: 'application/json',
+                    responseSchema: {
+                        type: Type.ARRAY,
+                        items: {
+                            type: Type.OBJECT,
+                            properties: {
+                                date: { type: Type.STRING },
+                                description: { type: Type.STRING },
+                                amount: { type: Type.NUMBER },
+                                type: { type: Type.STRING },
+                                suggestedCategoryId: { type: Type.STRING },
+                                suggestedCategoryName: { type: Type.STRING }
+                            },
+                            required: ['date', 'description', 'amount', 'type']
+                        }
+                    }
+                }
+            });
+
+            const textOutput = response.text;
+            if (!textOutput) throw new Error("Empty AI response.");
+            const parsed = JSON.parse(textOutput);
+            setExtractedTransactions(parsed);
+            setImportStep('preview');
+        } catch (e: any) {
+            setAiError(e.message || "AI Extraction failed.");
+        } finally {
+            setIsImporting(false);
+        }
+    };
+
+    const finalizeImport = async () => {
+        setIsImporting(true);
+        for (const ext of extractedTransactions) {
+            const category = categories.find(c => c.id === ext.suggestedCategoryId);
+            await addLocalTransaction({
+                id: generateId(),
+                date: ext.date,
+                description: ext.description,
+                amount: ext.amount,
+                type: ext.type as TransactionType,
+                accountId: importAccountId,
+                category: category
+            });
+        }
+        setIsImporting(false);
+        setIsImportModalOpen(false);
+        setImportStep('input');
+        setImportRawText('');
+        setExtractedTransactions([]);
+    };
+
     const applySuggestion = async (suggestion: AISuggestion) => {
         const transaction = transactions.find(t => t.id === suggestion.id);
         const category = categories.find(c => c.id === suggestion.suggestedCategoryId);
-        
         if (transaction && category) {
-            const updated = { ...transaction, category };
-            await updateLocalTransaction(updated);
+            await updateLocalTransaction({ ...transaction, category });
             setAppliedIds(prev => new Set(prev).add(suggestion.id));
         }
     };
@@ -232,9 +282,7 @@ const Transactions: React.FC = () => {
     const applyAllSuggestions = async () => {
         setIsAnalyzing(true);
         for (const sug of aiResults) {
-            if (!appliedIds.has(sug.id)) {
-                await applySuggestion(sug);
-            }
+            if (!appliedIds.has(sug.id)) await applySuggestion(sug);
         }
         setIsAnalyzing(false);
         setTimeout(() => setIsAIModalOpen(false), 800);
@@ -244,11 +292,9 @@ const Transactions: React.FC = () => {
         e.stopPropagation();
         if (confirm('Permanently delete this record?')) {
             await deleteLocalTransaction(id);
-            if (selectedIds.has(id)) {
-                const next = new Set(selectedIds);
-                next.delete(id);
-                setSelectedIds(next);
-            }
+            const next = new Set(selectedIds);
+            next.delete(id);
+            setSelectedIds(next);
         }
     };
 
@@ -261,18 +307,13 @@ const Transactions: React.FC = () => {
     };
 
     const toggleSelectAll = () => {
-        if (selectedIds.size > 0) {
-            setSelectedIds(new Set());
-        } else {
-            setSelectedIds(new Set(filteredTransactions.map(t => t.id)));
-        }
+        if (selectedIds.size > 0) setSelectedIds(new Set());
+        else setSelectedIds(new Set(filteredTransactions.map(t => t.id)));
     };
 
     const handleBulkDelete = async () => {
-        const count = selectedIds.size;
-        if (confirm(`Are you sure you want to delete ${count} selected transaction(s)?`)) {
-            const idsToDelete = Array.from(selectedIds);
-            await deleteLocalTransactions(idsToDelete);
+        if (confirm(`Delete ${selectedIds.size} selected items?`)) {
+            await deleteLocalTransactions(Array.from(selectedIds));
             setSelectedIds(new Set());
         }
     };
@@ -285,7 +326,7 @@ const Transactions: React.FC = () => {
                     <p className="text-muted mb-0 small">Audit trail for all business and personal accounts.</p>
                 </div>
                 <div className="d-flex gap-2">
-                    <button onClick={() => setIsImportModalOpen(true)} className="btn btn-white border shadow-sm px-3 fw-bold d-flex align-items-center gap-2 rounded-3">
+                    <button onClick={() => { setImportStep('input'); setIsImportModalOpen(true); }} className="btn btn-white border shadow-sm px-3 fw-bold d-flex align-items-center gap-2 rounded-3">
                         <Upload size={18} className="text-primary" /> Import
                     </button>
                     <button onClick={() => handleOpenModal()} className="btn btn-black shadow-lg px-4 fw-900 d-flex align-items-center gap-2 rounded-3">
@@ -302,66 +343,33 @@ const Transactions: React.FC = () => {
                                 <label className="form-label fw-800 small text-muted text-uppercase mb-2">Search Records</label>
                                 <div className="position-relative">
                                     <Search size={18} className="position-absolute top-50 start-0 translate-middle-y ms-3 text-muted" />
-                                    <input 
-                                        type="text" 
-                                        className="form-control border-0 bg-light ps-5 py-2 rounded-3 fw-bold shadow-none" 
-                                        placeholder="Vendor, category, etc..."
-                                        value={searchTerm}
-                                        onChange={e => setSearchTerm(e.target.value)}
-                                    />
+                                    <input type="text" className="form-control border-0 bg-light ps-5 py-2 rounded-3 fw-bold" placeholder="Vendor, category, etc..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
                                 </div>
                             </div>
                             <div className="col-12 col-md-6 col-lg-3">
-                                <label className="form-label fw-800 small text-muted text-uppercase mb-2">Filter by Account</label>
-                                <div className="position-relative">
-                                    <Wallet size={16} className="position-absolute top-50 start-0 translate-middle-y ms-3 text-muted" />
-                                    <select 
-                                        className="form-select border-0 bg-light ps-5 py-2 rounded-3 fw-bold shadow-none" 
-                                        value={filterAccountId}
-                                        onChange={e => setFilterAccountId(e.target.value)}
-                                    >
-                                        <option value="">All Accounts</option>
-                                        {accounts.map(acc => (
-                                            <option key={acc.id} value={acc.id}>{acc.name}</option>
-                                        ))}
-                                    </select>
-                                </div>
+                                <label className="form-label fw-800 small text-muted text-uppercase mb-2">Account</label>
+                                <select className="form-select border-0 bg-light py-2 rounded-3 fw-bold" value={filterAccountId} onChange={e => setFilterAccountId(e.target.value)}>
+                                    <option value="">All Accounts</option>
+                                    {accounts.map(acc => <option key={acc.id} value={acc.id}>{acc.name}</option>)}
+                                </select>
                             </div>
                             <div className="col-6 col-md-3 col-lg-2">
                                 <label className="form-label fw-800 small text-muted text-uppercase mb-2">Start Date</label>
-                                <input 
-                                    type="date" 
-                                    className="form-control border-0 bg-light py-2 rounded-3 fw-bold shadow-none" 
-                                    value={startDate}
-                                    onChange={e => setStartDate(e.target.value)}
-                                />
+                                <input type="date" className="form-control border-0 bg-light py-2 rounded-3 fw-bold" value={startDate} onChange={e => setStartDate(e.target.value)} />
                             </div>
                             <div className="col-6 col-md-3 col-lg-2">
                                 <label className="form-label fw-800 small text-muted text-uppercase mb-2">End Date</label>
-                                <input 
-                                    type="date" 
-                                    className="form-control border-0 bg-light py-2 rounded-3 fw-bold shadow-none" 
-                                    value={endDate}
-                                    onChange={e => setEndDate(e.target.value)}
-                                />
+                                <input type="date" className="form-control border-0 bg-light py-2 rounded-3 fw-bold" value={endDate} onChange={e => setEndDate(e.target.value)} />
                             </div>
                         </div>
                     </div>
 
                     <div className="table-responsive">
                         <table className="table table-hover align-middle mb-0">
-                            <thead className="bg-light bg-opacity-50">
+                            <thead className="bg-light">
                                 <tr>
                                     <th className="ps-4 py-3 border-0" style={{ width: '40px' }}>
-                                        <div className="form-check m-0">
-                                            <input 
-                                                className="form-check-input shadow-none cursor-pointer" 
-                                                type="checkbox" 
-                                                checked={selectedIds.size > 0 && selectedIds.size === filteredTransactions.length}
-                                                ref={el => el && (el.indeterminate = selectedIds.size > 0 && selectedIds.size < filteredTransactions.length)}
-                                                onChange={toggleSelectAll}
-                                            />
-                                        </div>
+                                        <input className="form-check-input" type="checkbox" checked={selectedIds.size > 0 && selectedIds.size === filteredTransactions.length} ref={el => el && (el.indeterminate = selectedIds.size > 0 && selectedIds.size < filteredTransactions.length)} onChange={toggleSelectAll} />
                                     </th>
                                     <th className="py-3 border-0 text-muted small fw-800 text-uppercase">Date</th>
                                     <th className="py-3 border-0 text-muted small fw-800 text-uppercase">Description</th>
@@ -371,201 +379,195 @@ const Transactions: React.FC = () => {
                                 </tr>
                             </thead>
                             <tbody>
-                                {filteredTransactions.map(t => {
-                                    const isSelected = selectedIds.has(t.id);
-                                    return (
-                                        <tr key={t.id} onClick={() => handleOpenModal(t)} className={`border-bottom border-light transition-all cursor-pointer ${isSelected ? 'bg-primary bg-opacity-5' : ''}`}>
-                                            <td className="ps-4 py-4" onClick={e => e.stopPropagation()}>
-                                                <div className="form-check m-0">
-                                                    <input 
-                                                        className="form-check-input shadow-none cursor-pointer" 
-                                                        type="checkbox" 
-                                                        checked={isSelected}
-                                                        onChange={(e) => toggleSelectOne(e, t.id)}
-                                                    />
+                                {filteredTransactions.map(t => (
+                                    <tr key={t.id} onClick={() => handleOpenModal(t)} className={`cursor-pointer ${selectedIds.has(t.id) ? 'bg-primary bg-opacity-5' : ''}`}>
+                                        <td className="ps-4 py-4" onClick={e => e.stopPropagation()}>
+                                            <input className="form-check-input" type="checkbox" checked={selectedIds.has(t.id)} onChange={(e) => toggleSelectOne(e, t.id)} />
+                                        </td>
+                                        <td className="py-4"><span className="text-muted fw-bold small">{formatDate(t.date)}</span></td>
+                                        <td className="py-4">
+                                            <div className="d-flex align-items-center gap-3">
+                                                <div className={`p-2 rounded-circle ${t.type === TransactionType.INCOME ? 'bg-success bg-opacity-10 text-success' : 'bg-danger bg-opacity-10 text-danger'}`}>
+                                                    {t.type === TransactionType.INCOME ? <ArrowUpRight size={16}/> : <ArrowDownRight size={16}/>}
                                                 </div>
-                                            </td>
-                                            <td className="py-4"><span className="text-muted fw-bold small">{formatDate(t.date)}</span></td>
-                                            <td className="py-4">
-                                                <div className="d-flex align-items-center gap-3">
-                                                    <div className={`p-2 rounded-circle ${t.type === TransactionType.INCOME ? 'bg-success bg-opacity-10 text-success' : 'bg-danger bg-opacity-10 text-danger'}`}>
-                                                        {t.type === TransactionType.INCOME ? <ArrowUpRight size={16}/> : <ArrowDownRight size={16}/>}
-                                                    </div>
-                                                    <span className="fw-800 text-dark">{t.description}</span>
-                                                </div>
-                                            </td>
-                                            <td className="py-4">
-                                                <div className="badge bg-light text-muted border px-2 py-1 rounded-pill fw-800" style={{fontSize: '0.65rem'}}>
-                                                    {t.category?.name || 'Uncategorized'}
-                                                </div>
-                                            </td>
-                                            <td className="py-4 text-end">
-                                                <span className={`fw-900 fs-6 ${t.type === TransactionType.INCOME ? 'text-success' : 'text-black'}`}>
-                                                    {t.type === TransactionType.INCOME ? '+' : '-'} {formatCurrency(t.amount)}
-                                                </span>
-                                            </td>
-                                            <td className="pe-4 py-4 text-center" onClick={e => e.stopPropagation()}>
-                                                <button onClick={(e) => handleDeleteOne(e, t.id)} className="btn btn-sm btn-white border-0 text-danger"><Trash2 size={16}/></button>
-                                            </td>
-                                        </tr>
-                                    );
-                                })}
+                                                <span className="fw-800 text-dark">{t.description}</span>
+                                            </div>
+                                        </td>
+                                        <td className="py-4">
+                                            <div className="badge bg-light text-muted border px-2 py-1 rounded-pill fw-800" style={{fontSize: '0.65rem'}}>
+                                                {t.category?.name || 'Uncategorized'}
+                                            </div>
+                                        </td>
+                                        <td className="py-4 text-end">
+                                            <span className={`fw-900 fs-6 ${t.type === TransactionType.INCOME ? 'text-success' : 'text-black'}`}>
+                                                {formatCurrency(t.amount)}
+                                            </span>
+                                        </td>
+                                        <td className="pe-4 py-4 text-center" onClick={e => e.stopPropagation()}>
+                                            <button onClick={(e) => handleDeleteOne(e, t.id)} className="btn btn-sm text-danger"><Trash2 size={16}/></button>
+                                        </td>
+                                    </tr>
+                                ))}
                             </tbody>
                         </table>
                     </div>
                 </CardContent>
             </Card>
 
-            {/* Floating Bulk Action Bar */}
+            {/* Bulk Action Bar */}
             {selectedIds.size > 0 && (
                 <div className="position-fixed bottom-0 start-50 translate-middle-x mb-4 animate-slide-up" style={{ zIndex: 1050 }}>
-                    <div className="bg-black text-white px-4 py-3 rounded-pill shadow-lg d-flex align-items-center gap-4 border border-white border-opacity-10" style={{ backdropFilter: 'blur(10px)', backgroundColor: 'rgba(0,0,0,0.85)' }}>
-                        <div className="d-flex align-items-center gap-2 border-end border-white border-opacity-10 pe-4">
-                            <CheckSquare size={18} className="text-primary" />
-                            <span className="fw-900 small">{selectedIds.size} SELECTED</span>
-                        </div>
-                        <div className="d-flex align-items-center gap-3">
-                            <button onClick={handleAnalyzeWithAI} className="btn btn-link text-primary p-0 fw-800 small text-decoration-none d-flex align-items-center gap-2">
-                                <Zap size={18} /> ANALYZE DEDUCTIONS
-                            </button>
-                            <button onClick={handleBulkDelete} className="btn btn-link text-danger p-0 fw-800 small text-decoration-none d-flex align-items-center gap-2">
-                                <Trash2 size={16} /> DELETE
-                            </button>
-                            <button onClick={() => setSelectedIds(new Set())} className="btn btn-link text-white p-0 fw-800 small text-decoration-none opacity-50 ms-3">
-                                CANCEL
-                            </button>
-                        </div>
+                    <div className="bg-black text-white px-4 py-3 rounded-pill shadow-lg d-flex align-items-center gap-4 border border-white border-opacity-10">
+                        <span className="fw-900 small border-end border-white border-opacity-10 pe-4">{selectedIds.size} SELECTED</span>
+                        <button onClick={handleAnalyzeWithAI} className="btn btn-link text-primary p-0 fw-800 small text-decoration-none d-flex align-items-center gap-2">
+                            <Zap size={18} /> ANALYZE DEDUCTIONS
+                        </button>
+                        <button onClick={handleBulkDelete} className="btn btn-link text-danger p-0 fw-800 small text-decoration-none d-flex align-items-center gap-2">
+                            <Trash2 size={16} /> DELETE
+                        </button>
                     </div>
                 </div>
             )}
 
-            {/* AI Auditor Modal */}
-            <Modal isOpen={isAIModalOpen} onClose={() => setIsAIModalOpen(false)} title="Smart Tax Auditor" size="lg">
+            {/* Smart Import Modal */}
+            <Modal isOpen={isImportModalOpen} onClose={() => !isImporting && setIsImportModalOpen(false)} title="AI Transaction Importer" size="lg">
                 <div className="p-1">
-                    {isAnalyzing ? (
-                        <div className="text-center py-5">
-                            <div className="spinner-border text-primary mb-3" role="status"></div>
-                            <h5 className="fw-900">AI Specialist Analyzing...</h5>
-                            <p className="text-muted small">Gemini is mapping your expenses to IRS categories for maximum deduction benefit.</p>
-                        </div>
-                    ) : aiError ? (
-                        <div className="text-center py-5">
-                            <AlertCircle size={48} className="text-danger mb-3" />
-                            <h5 className="fw-900 text-danger">Analysis Failed</h5>
-                            <p className="text-muted small mb-4">{aiError}</p>
-                            <div className="d-flex justify-content-center gap-2">
-                                <button onClick={handleAnalyzeWithAI} className="btn btn-primary px-4 fw-bold rounded-3">Try Again</button>
-                                {window.aistudio && (
-                                    <button onClick={() => window.aistudio.openSelectKey()} className="btn btn-white border px-4 fw-bold rounded-3">Change Key</button>
-                                )}
+                    {importStep === 'input' ? (
+                        <div>
+                            <p className="text-muted small mb-4">Paste your bank statement text or raw transaction data below. Gemini AI will automatically extract entries and suggest categories.</p>
+                            
+                            <div className="mb-3">
+                                <label className="form-label fw-bold small text-muted text-uppercase">1. Target Account</label>
+                                <select className="form-select border shadow-sm rounded-3 fw-bold" value={importAccountId} onChange={e => setImportAccountId(e.target.value)}>
+                                    <option value="">Select Account for these entries...</option>
+                                    {accounts.map(acc => <option key={acc.id} value={acc.id}>{acc.name} ({acc.type})</option>)}
+                                </select>
                             </div>
+
+                            <div className="mb-4">
+                                <label className="form-label fw-bold small text-muted text-uppercase">2. Raw Statement Text</label>
+                                <textarea 
+                                    className="form-control border shadow-sm rounded-4 p-3 bg-light" 
+                                    rows={8} 
+                                    placeholder="Paste text here... e.g. 05/12 LOVES TRAVEL STOP #312 - $452.12"
+                                    value={importRawText}
+                                    onChange={e => setImportRawText(e.target.value)}
+                                ></textarea>
+                            </div>
+
+                            <button 
+                                onClick={handleImportAI}
+                                disabled={isImporting || !importRawText || !importAccountId}
+                                className="btn btn-black w-100 py-3 fw-900 rounded-3 shadow-lg d-flex align-items-center justify-content-center gap-2"
+                            >
+                                {isImporting ? <Loader2 size={18} className="animate-spin" /> : <Sparkles size={18} className="text-primary" />}
+                                {isImporting ? "Analyzing Statement..." : "Analyze with Smart AI"}
+                            </button>
                         </div>
                     ) : (
                         <div>
-                            <div className="alert alert-primary bg-primary bg-opacity-5 border-0 rounded-4 p-4 d-flex justify-content-between align-items-center mb-4">
+                            <div className="alert alert-success bg-success bg-opacity-5 border-0 rounded-4 p-4 d-flex justify-content-between align-items-center mb-4">
                                 <div className="d-flex gap-3">
-                                    <BrainCircuit className="text-primary flex-shrink-0" size={32} />
+                                    <CheckCircle2 className="text-success" size={24} />
                                     <div>
-                                        <h6 className="fw-900 text-black mb-1">Audit Complete</h6>
-                                        <p className="small mb-0 text-muted">Review and apply optimized categories for {aiResults.length} items.</p>
+                                        <h6 className="fw-900 text-black mb-0">Extraction Successful</h6>
+                                        <p className="small mb-0 text-muted">Found {extractedTransactions.length} entries to import into <strong>{accounts.find(a => a.id === importAccountId)?.name}</strong>.</p>
                                     </div>
                                 </div>
-                                <button 
-                                    onClick={applyAllSuggestions} 
-                                    className="btn btn-primary px-4 fw-900 rounded-3 shadow-sm"
-                                    disabled={aiResults.length === 0}
-                                >
-                                    Apply All Sugestions
+                                <button onClick={finalizeImport} disabled={isImporting} className="btn btn-success px-4 fw-900 rounded-3">
+                                    {isImporting ? <Loader2 size={16} className="animate-spin" /> : 'Commit to Ledger'}
                                 </button>
                             </div>
 
-                            <div className="d-flex flex-column gap-3 overflow-auto pr-2" style={{ maxHeight: '60vh' }}>
-                                {aiResults.length > 0 ? aiResults.map(res => {
-                                    const t = transactions.find(x => x.id === res.id);
-                                    if (!t) return null;
-                                    const isApplied = appliedIds.has(res.id);
-                                    return (
-                                        <div key={res.id} className={`card border rounded-4 transition-all ${isApplied ? 'bg-success bg-opacity-5 opacity-75' : 'bg-white shadow-sm'}`}>
-                                            <div className="card-body p-4">
-                                                <div className="d-flex justify-content-between align-items-start mb-3">
-                                                    <div>
-                                                        <span className="fw-900 fs-5 text-dark">{t.description}</span>
-                                                        <div className="text-muted small fw-bold mt-1">
-                                                            VALUE: <span className="text-black">{formatCurrency(t.amount)}</span>
-                                                        </div>
-                                                    </div>
-                                                    <div className="badge bg-primary bg-opacity-10 text-primary border-0 px-3 py-2 rounded-pill fw-900" style={{fontSize: '0.65rem'}}>
-                                                        {res.advantage}
-                                                    </div>
-                                                </div>
-
-                                                <div className="bg-light p-3 rounded-3 mb-3 border border-dashed d-flex align-items-center justify-content-between">
-                                                    <div className="d-flex flex-column flex-md-row align-items-md-center gap-2 gap-md-3">
-                                                        <div className="d-flex align-items-center gap-2">
-                                                            <div className="text-muted small fw-800 text-uppercase">Current:</div>
-                                                            <div className="badge bg-white text-muted border px-2 py-1 rounded-pill">{t.category?.name || 'Uncategorized'}</div>
-                                                        </div>
-                                                        <ArrowRight size={16} className="text-muted opacity-50 d-none d-md-block" />
-                                                        <div className="d-flex align-items-center gap-2">
-                                                            <div className="text-primary small fw-800 text-uppercase">AI Recommended:</div>
-                                                            <div className="badge bg-primary text-white border-0 px-2 py-1 rounded-pill">{res.suggestedCategoryName}</div>
-                                                        </div>
-                                                    </div>
-                                                    <div className="text-end d-none d-md-block">
-                                                        <div className="text-muted" style={{fontSize: '0.6rem', fontWeight: 800}}>CONFIDENCE</div>
-                                                        <div className="fw-900 text-primary">{Math.round(res.confidence * 100)}%</div>
-                                                    </div>
-                                                </div>
-
-                                                <div className="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3">
-                                                    <div className="d-flex align-items-center gap-2 flex-grow-1">
-                                                        <Info size={14} className="text-primary flex-shrink-0" />
-                                                        <span className="small text-muted italic">"{res.reason}"</span>
-                                                    </div>
-                                                    <button 
-                                                        onClick={() => applySuggestion(res)} 
-                                                        disabled={isApplied}
-                                                        className={`btn btn-sm px-4 fw-900 rounded-3 transition-all ${isApplied ? 'btn-success text-white border-0' : 'btn-white border shadow-sm text-primary'}`}
-                                                    >
-                                                        {isApplied ? <><Check size={14} className="me-2" /> Applied</> : 'Accept Suggestion'}
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    );
-                                }) : (
-                                    <div className="text-center py-5">
-                                        <AlertTriangle size={32} className="text-warning mb-3" />
-                                        <h6 className="fw-bold">No Suggestions Generated</h6>
-                                        <p className="text-muted small">The AI couldn't find specific tax optimizations for the selected data.</p>
-                                    </div>
-                                )}
+                            <div className="table-responsive rounded-4 border">
+                                <table className="table align-middle mb-0">
+                                    <thead className="bg-light">
+                                        <tr>
+                                            <th className="ps-4 py-3 small fw-800 text-muted">DATE</th>
+                                            <th className="py-3 small fw-800 text-muted">VENDOR</th>
+                                            <th className="py-3 small fw-800 text-muted">CATEGORY</th>
+                                            <th className="pe-4 py-3 small fw-800 text-muted text-end">AMOUNT</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {extractedTransactions.map((ext, idx) => (
+                                            <tr key={idx}>
+                                                <td className="ps-4 py-3 small fw-bold">{ext.date}</td>
+                                                <td className="py-3 fw-bold">{ext.description}</td>
+                                                <td className="py-3">
+                                                    <span className="badge bg-primary bg-opacity-10 text-primary border-0 rounded-pill px-2">
+                                                        {ext.suggestedCategoryName || 'Uncategorized'}
+                                                    </span>
+                                                </td>
+                                                <td className="pe-4 py-3 text-end fw-900">
+                                                    <span className={ext.type === TransactionType.INCOME ? 'text-success' : 'text-danger'}>
+                                                        {formatCurrency(ext.amount)}
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div className="mt-4 text-center">
+                                <button onClick={() => setImportStep('input')} className="btn btn-link text-muted fw-bold text-decoration-none">← Go Back / Edit Text</button>
                             </div>
                         </div>
                     )}
                 </div>
             </Modal>
 
-            {/* Import Modal */}
-            <Modal isOpen={isImportModalOpen} onClose={() => setIsImportModalOpen(false)} title="Import Data">
+            {/* Existing AI Auditor Modal */}
+            <Modal isOpen={isAIModalOpen} onClose={() => !isAnalyzing && setIsAIModalOpen(false)} title="Tax Auditor Suggestion" size="lg">
                 <div className="p-1">
-                    <p className="text-muted small mb-4">Link your CSV files or bank statements here.</p>
-                    <div className="d-grid gap-3">
-                        <button className="btn btn-white border shadow-sm p-4 rounded-4 text-start d-flex align-items-center gap-3">
-                            <div className="bg-primary bg-opacity-10 p-3 rounded-3 text-primary"><FileJson size={24}/></div>
-                            <div>
-                                <h6 className="fw-900 mb-1">CSV/Excel Import</h6>
-                                <p className="text-muted small mb-0">Drag and drop your files here.</p>
-                            </div>
-                        </button>
-                    </div>
+                    {isAnalyzing ? (
+                        <div className="text-center py-5">
+                            <Loader2 size={40} className="animate-spin text-primary mb-3" />
+                            <h5 className="fw-900">Analyzing Deductions...</h5>
+                        </div>
+                    ) : aiError ? (
+                        <div className="text-center py-5">
+                            <AlertCircle size={48} className="text-danger mb-3" />
+                            <p>{aiError}</p>
+                            <button onClick={handleAnalyzeWithAI} className="btn btn-primary">Retry</button>
+                        </div>
+                    ) : (
+                        <div className="d-flex flex-column gap-3 overflow-auto pr-2" style={{ maxHeight: '60vh' }}>
+                            {aiResults.map(res => {
+                                const t = transactions.find(x => x.id === res.id);
+                                if (!t) return null;
+                                return (
+                                    <div key={res.id} className="card border rounded-4 p-4 shadow-sm">
+                                        <div className="d-flex justify-content-between align-items-start mb-3">
+                                            <div>
+                                                <h6 className="fw-900 mb-1">{t.description}</h6>
+                                                <span className="text-muted small">Current: {t.category?.name || 'Uncategorized'}</span>
+                                            </div>
+                                            <div className="badge bg-primary bg-opacity-10 text-primary px-3 py-2 rounded-pill fw-900">{res.advantage}</div>
+                                        </div>
+                                        <div className="bg-light p-3 rounded-3 mb-3 d-flex align-items-center justify-content-between">
+                                            <div className="small fw-bold">AI RECOMMENDS: <span className="text-primary">{res.suggestedCategoryName}</span></div>
+                                            <button onClick={() => applySuggestion(res)} disabled={appliedIds.has(res.id)} className={`btn btn-sm ${appliedIds.has(res.id) ? 'btn-success' : 'btn-black'}`}>
+                                                {appliedIds.has(res.id) ? 'Applied' : 'Accept'}
+                                            </button>
+                                        </div>
+                                        <p className="small italic text-muted mb-0">"{res.reason}"</p>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+                    {!isAnalyzing && aiResults.length > 0 && (
+                        <button onClick={applyAllSuggestions} className="btn btn-primary w-100 mt-4 py-3 fw-bold">Apply All Suggestions</button>
+                    )}
                 </div>
             </Modal>
 
+            {/* Entry Form Modal */}
             <Modal isOpen={isFormModalOpen} onClose={() => setIsFormModalOpen(false)} title={editingTransaction ? "Edit Record" : "New Transaction"}>
                 <form onSubmit={handleSaveTransaction}>
                     <div className="mb-4">
-                        <label className="form-label fw-bold small text-muted text-uppercase ls-1">Record Type</label>
+                        <label className="form-label fw-bold small text-muted text-uppercase">Record Type</label>
                         <div className="d-flex gap-2 p-1 bg-light rounded-3 border">
                             <button type="button" onClick={() => setFormData({...formData, type: TransactionType.EXPENSE})} className={`btn flex-fill py-2 rounded-2 ${formData.type === TransactionType.EXPENSE ? 'btn-white shadow-sm fw-bold border text-danger' : 'text-muted border-0 bg-transparent'}`}>Expense</button>
                             <button type="button" onClick={() => setFormData({...formData, type: TransactionType.INCOME})} className={`btn flex-fill py-2 rounded-2 ${formData.type === TransactionType.INCOME ? 'btn-white shadow-sm fw-bold border text-success' : 'text-muted border-0 bg-transparent'}`}>Income</button>
