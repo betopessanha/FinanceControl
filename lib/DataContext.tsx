@@ -114,6 +114,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const localFiscal = loadFromLocal(STORAGE_KEYS.FISCAL, []);
         const localLoads = loadFromLocal(STORAGE_KEYS.LOADS, []);
 
+        // Priority is cloud if connected, but we set local first for fast UI
         setBusinessEntities(localEntities);
         if (!activeEntityId && localEntities.length > 0) setActiveEntityId(localEntities[0].id);
         
@@ -140,7 +141,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
                     if (resEntities.data?.length) { 
                         const mapped = resEntities.data.map(e => ({
-                            id: e.id, name: e.name, type: e.type, structure: e.structure, tax_form: e.tax_form,
+                            id: e.id, name: e.name, type: e.type, structure: e.structure, taxForm: e.tax_form,
                             ein: e.ein, email: e.email, phone: e.phone, website: e.website,
                             address: e.address, city: e.city, state: e.state, zip: e.zip
                         }));
@@ -148,15 +149,39 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
                         if (!activeEntityId) setActiveEntityId(mapped[0].id);
                     }
                     if (resAccs.data?.length) {
-                        const mapped = resAccs.data.map(a => ({ id: a.id, name: a.name, type: a.type, initialBalance: parseFloat(a.initial_balance) || 0, businessEntityId: a.business_entity_id }));
+                        const mapped = resAccs.data.map(a => ({ 
+                            id: a.id, 
+                            name: a.name, 
+                            type: a.type, 
+                            initialBalance: Number(a.initial_balance) || 0, 
+                            businessEntityId: a.business_entity_id 
+                        }));
                         setAccounts(mapped); saveToLocal(STORAGE_KEYS.ACCOUNTS, mapped);
                     }
+                    if (resCats.data?.length) {
+                        const mapped = resCats.data.map(c => ({
+                            id: c.id,
+                            name: c.name,
+                            type: c.type as TransactionType,
+                            isTaxDeductible: c.is_tax_deductible
+                        }));
+                        setCategories(mapped); saveToLocal(STORAGE_KEYS.CATEGORIES, mapped);
+                    }
                     if (resTrans.data?.length) {
-                        const allCats = resCats.data || localCats;
+                        const allCats = resCats.data?.length ? resCats.data.map(c => ({
+                            id: c.id, name: c.name, type: c.type, isTaxDeductible: c.is_tax_deductible
+                        })) : localCats;
+                        
                         const allTrucks = resTrucks.data || localTrucks;
+                        
                         const mapped = resTrans.data.map(t => ({
-                            id: t.id, date: t.date, description: t.description, amount: parseFloat(t.amount) || 0,
-                            type: t.type as TransactionType, accountId: t.account_id, toAccountId: t.to_account_id,
+                            id: t.id, 
+                            date: t.date, 
+                            description: t.description, 
+                            amount: Number(t.amount) || 0,
+                            type: t.type as TransactionType, 
+                            accountId: t.account_id, 
+                            toAccountId: t.to_account_id,
                             category: allCats.find((c: any) => c.id === t.category_id),
                             toCategory: allCats.find((c: any) => c.id === t.to_category_id),
                             truck: allTrucks.find((tr: any) => tr.id === t.truck_id)
