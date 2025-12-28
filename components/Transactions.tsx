@@ -15,6 +15,19 @@ import { useData } from '../lib/DataContext';
 import ExportMenu from './ui/ExportMenu';
 import { GoogleGenAI, Type } from "@google/genai";
 
+// Define the AIStudio interface to match the global type name expected by the environment
+interface AIStudio {
+  hasSelectedApiKey: () => Promise<boolean>;
+  openSelectKey: () => Promise<void>;
+}
+
+// Extend the global Window interface using the AIStudio type to avoid declaration conflicts
+declare global {
+  interface Window {
+    aistudio: AIStudio;
+  }
+}
+
 interface AISuggestion {
     id: string;
     suggestedCategoryId: string;
@@ -123,9 +136,23 @@ const Transactions: React.FC = () => {
         const selectedTrans = transactions.filter(t => selectedIds.has(t.id));
         
         try {
+            // Check for API Key selection in host environment
+            if (!process.env.API_KEY && window.aistudio) {
+                const hasKey = await window.aistudio.hasSelectedApiKey();
+                if (!hasKey) {
+                    await window.aistudio.openSelectKey();
+                    // Proceed after opening dialog - assume key will be available via process.env.API_KEY injected
+                }
+            }
+
+            if (!process.env.API_KEY) {
+                throw new Error("API Key is not configured. Please select or provide an API key in the host settings.");
+            }
+
+            // Create fresh instance to ensure current API Key is used
             const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
             
-            // Provide exact category context to the AI so it uses IDs that exist in the DB
+            // Provide exact category context
             const categoryList = categories.map(c => ({ 
                 id: c.id, 
                 name: c.name, 
@@ -145,7 +172,7 @@ const Transactions: React.FC = () => {
             TASK:
             Return a JSON ARRAY where every transaction ID above has a suggestion.
             Use the exact Category ID from the SYSTEM CATEGORIES list.
-            Reasoning should be based on IRS Publication 463 (Travel, Gift, and Car Expenses) or Schedule C rules for trucking.
+            Reasoning should be based on IRS Publication 463 or Schedule C rules for trucking.
             
             OUTPUT FORMAT:
             [{ "id": "trans_id", "suggestedCategoryId": "cat_id", "suggestedCategoryName": "cat_name", "reason": "why...", "confidence": 0.95, "advantage": "100% Deductible" }]`;
@@ -174,13 +201,18 @@ const Transactions: React.FC = () => {
             });
 
             const textOutput = response.text;
-            if (!textOutput) throw new Error("AI returned empty response");
+            if (!textOutput) throw new Error("AI returned an empty response.");
             
             const suggestions: AISuggestion[] = JSON.parse(textOutput);
             setAiResults(suggestions);
         } catch (e: any) {
             console.error("AI Analysis failed", e);
-            setAiError(e.message || "Failed to connect to AI Auditor. Check API Key configuration.");
+            if (e.message?.includes("entity was not found")) {
+                if (window.aistudio) await window.aistudio.openSelectKey();
+                setAiError("API Key session expired. Please select your API Key again.");
+            } else {
+                setAiError(e.message || "Failed to connect to AI Auditor. Ensure your host environment provides a valid API Key.");
+            }
         } finally {
             setIsAnalyzing(false);
         }
@@ -420,8 +452,13 @@ const Transactions: React.FC = () => {
                         <div className="text-center py-5">
                             <AlertCircle size={48} className="text-danger mb-3" />
                             <h5 className="fw-900 text-danger">Analysis Failed</h5>
-                            <p className="text-muted small">{aiError}</p>
-                            <button onClick={handleAnalyzeWithAI} className="btn btn-primary mt-3 px-4 fw-bold">Try Again</button>
+                            <p className="text-muted small mb-4">{aiError}</p>
+                            <div className="d-flex justify-content-center gap-2">
+                                <button onClick={handleAnalyzeWithAI} className="btn btn-primary px-4 fw-bold rounded-3">Try Again</button>
+                                {window.aistudio && (
+                                    <button onClick={() => window.aistudio.openSelectKey()} className="btn btn-white border px-4 fw-bold rounded-3">Change Key</button>
+                                )}
+                            </div>
                         </div>
                     ) : (
                         <div>
