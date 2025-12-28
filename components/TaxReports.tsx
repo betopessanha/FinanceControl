@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useEffect } from 'react';
 import Card, { CardContent } from './ui/Card';
 import { TransactionType, EntityType, Transaction, LegalStructure } from '../types';
@@ -58,10 +59,10 @@ const TaxReports: React.FC<{ setActivePage?: (p: any) => void }> = ({ setActiveP
         else setActiveForm('1040');
     }, [activeEntity]);
 
-    // Explicitly typed as number[] to avoid 'unknown' inference in map calls
+    // Fixed: Explicitly typed number Set and sort parameters to avoid unknown inference
     const availableYears: number[] = useMemo(() => {
         const transYears = transactions.map(t => new Date(t.date).getFullYear());
-        const years = Array.from<number>(new Set([...transYears, new Date().getFullYear()])).sort((a, b) => b - a);
+        const years = Array.from(new Set<number>([...transYears, new Date().getFullYear()])).sort((a: number, b: number) => b - a);
         return years;
     }, [transactions]);
 
@@ -323,7 +324,8 @@ const TaxReports: React.FC<{ setActivePage?: (p: any) => void }> = ({ setActiveP
                                             <tr key={idx}>
                                                 <td className="ps-4 py-3 fw-bold text-muted">Line {idx + 8}</td>
                                                 <td className="py-3 fw-600">{name}</td>
-                                                <td className="py-3 text-end fw-800">{formatCurrency(val)}</td>
+                                                {/* Fixed: Explicitly cast val to number to prevent unknown type error */}
+                                                <td className="py-3 text-end fw-800">{formatCurrency(val as number)}</td>
                                             </tr>
                                         ))}
                                         <tr className="bg-light bg-opacity-50">

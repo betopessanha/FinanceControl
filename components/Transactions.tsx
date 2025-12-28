@@ -3,11 +3,25 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import Card, { CardContent } from './ui/Card';
 import { Transaction, TransactionType, Category, BankAccount } from '../types';
 import { formatCurrency, formatDate, downloadCSV, generateId, downloadImportTemplate } from '../lib/utils';
-import { PlusCircle, Search, Edit2, Loader2, Calendar, Wallet, Trash2, Save, Sparkles, FileText, Check, AlertCircle, ArrowRight, Download, Upload, FileJson, Info, ArrowUpRight, ArrowDownRight, Tag, ArrowRightLeft, X, Filter, CheckSquare, Square, Trash, BrainCircuit } from 'lucide-react';
+import { 
+    PlusCircle, Search, Edit2, Loader2, Calendar, Wallet, Trash2, Save, 
+    Sparkles, FileText, Check, AlertCircle, ArrowRight, Download, Upload, 
+    FileJson, Info, ArrowUpRight, ArrowDownRight, Tag, ArrowRightLeft, 
+    X, Filter, CheckSquare, Square, Trash, BrainCircuit, Zap, RefreshCw, CheckCircle2
+} from 'lucide-react';
 import Modal from './ui/Modal';
 import { useData } from '../lib/DataContext';
 import ExportMenu from './ui/ExportMenu';
 import { GoogleGenAI, Type } from "@google/genai";
+
+interface AISuggestion {
+    id: string;
+    suggestedCategoryId: string;
+    suggestedCategoryName: string;
+    reason: string;
+    confidence: number;
+    advantage: string;
+}
 
 const Transactions: React.FC = () => {
     const { 
@@ -27,8 +41,9 @@ const Transactions: React.FC = () => {
 
     // Bulk selection state
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-    const [aiResults, setAiResults] = useState<any[]>([]);
+    const [aiResults, setAiResults] = useState<AISuggestion[]>([]);
     const [isAnalyzing, setIsAnalyzing] = useState(false);
+    const [appliedIds, setAppliedIds] = useState<Set<string>>(new Set());
 
     const [formData, setFormData] = useState<Omit<Transaction, 'id'>>({
         date: new Date().toISOString().split('T')[0],
@@ -97,13 +112,35 @@ const Transactions: React.FC = () => {
     const handleAnalyzeWithAI = async () => {
         setIsAnalyzing(true);
         setIsAIModalOpen(true);
+        setAppliedIds(new Set());
         const selectedTrans = transactions.filter(t => selectedIds.has(t.id));
         
         try {
             const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-            const prompt = `Act as a senior CPA. Analyze these business transactions and suggest the most appropriate IRS tax deduction categories.
-            Transactions: ${JSON.stringify(selectedTrans.map(t => ({ id: t.id, desc: t.description, amount: t.amount, currentCat: t.category?.name })))}
-            Return JSON only as an array of objects: { id: string, suggestedCategory: string, reason: string, confidence: number }`;
+            
+            // Contexto das categorias para o AI não inventar nomes
+            const categoryContext = categories.map(c => ({ id: c.id, name: c.name, type: c.type, deductible: c.isTaxDeductible }));
+
+            const prompt = `Act as a Senior CPA specializing in the US Trucking Industry. 
+            Analyze the following transactions and suggest the most tax-advantageous category for each based on IRS Publication 463 and Schedule C rules.
+            
+            Available Categories: ${JSON.stringify(categoryContext)}
+            
+            Selected Transactions: ${JSON.stringify(selectedTrans.map(t => ({ 
+                id: t.id, 
+                desc: t.description, 
+                amount: t.amount, 
+                currentCat: t.category?.name 
+            })))}
+            
+            For each transaction, provide:
+            1. The ID of the suggested category from the list.
+            2. The name of that category.
+            3. A concise reason explaining the tax strategy.
+            4. A confidence score (0-1).
+            5. The specific tax advantage (e.g., "100% Deductible", "Depreciable Asset", "Per Diem Rule").
+
+            Return JSON ONLY as an array of objects.`;
 
             const result = await ai.models.generateContent({
                 model: 'gemini-3-flash-preview',
@@ -116,11 +153,13 @@ const Transactions: React.FC = () => {
                             type: Type.OBJECT,
                             properties: {
                                 id: { type: Type.STRING },
-                                suggestedCategory: { type: Type.STRING },
+                                suggestedCategoryId: { type: Type.STRING },
+                                suggestedCategoryName: { type: Type.STRING },
                                 reason: { type: Type.STRING },
-                                confidence: { type: Type.NUMBER }
+                                confidence: { type: Type.NUMBER },
+                                advantage: { type: Type.STRING }
                             },
-                            required: ['id', 'suggestedCategory', 'reason']
+                            required: ['id', 'suggestedCategoryId', 'suggestedCategoryName', 'reason', 'confidence', 'advantage']
                         }
                     }
                 }
@@ -135,6 +174,28 @@ const Transactions: React.FC = () => {
         }
     };
 
+    const applySuggestion = async (suggestion: AISuggestion) => {
+        const transaction = transactions.find(t => t.id === suggestion.id);
+        const category = categories.find(c => c.id === suggestion.suggestedCategoryId);
+        
+        if (transaction && category) {
+            const updated = { ...transaction, category };
+            await updateLocalTransaction(updated);
+            setAppliedIds(prev => new Set(prev).add(suggestion.id));
+        }
+    };
+
+    const applyAllSuggestions = async () => {
+        setIsAnalyzing(true);
+        for (const sug of aiResults) {
+            if (!appliedIds.has(sug.id)) {
+                await applySuggestion(sug);
+            }
+        }
+        setIsAnalyzing(false);
+        setTimeout(() => setIsAIModalOpen(false), 800);
+    };
+
     const handleDeleteOne = async (e: React.MouseEvent, id: string) => {
         e.stopPropagation();
         if (confirm('Permanently delete this record?')) {
@@ -145,14 +206,6 @@ const Transactions: React.FC = () => {
                 setSelectedIds(next);
             }
         }
-    };
-
-    const resetFilters = () => {
-        setSearchTerm('');
-        setStartDate('');
-        setEndDate('');
-        setFilterAccountId('');
-        setSelectedIds(new Set());
     };
 
     const toggleSelectOne = (e: React.ChangeEvent<HTMLInputElement>, id: string) => {
@@ -179,8 +232,6 @@ const Transactions: React.FC = () => {
             setSelectedIds(new Set());
         }
     };
-
-    const hasActiveFilters = searchTerm !== '' || startDate !== '' || endDate !== '' || filterAccountId !== '';
 
     return (
         <div className="container-fluid py-2 animate-slide-up position-relative">
@@ -331,7 +382,7 @@ const Transactions: React.FC = () => {
                         </div>
                         <div className="d-flex align-items-center gap-3">
                             <button onClick={handleAnalyzeWithAI} className="btn btn-link text-primary p-0 fw-800 small text-decoration-none d-flex align-items-center gap-2">
-                                <BrainCircuit size={18} /> ANALYZE DEDUCTIONS
+                                <Zap size={18} /> ANALYZE DEDUCTIONS
                             </button>
                             <button onClick={handleBulkDelete} className="btn btn-link text-danger p-0 fw-800 small text-decoration-none d-flex align-items-center gap-2">
                                 <Trash2 size={16} /> DELETE
@@ -345,53 +396,79 @@ const Transactions: React.FC = () => {
             )}
 
             {/* AI Auditor Modal */}
-            <Modal isOpen={isAIModalOpen} onClose={() => setIsAIModalOpen(false)} title="AI Tax Auditor" size="lg">
+            <Modal isOpen={isAIModalOpen} onClose={() => setIsAIModalOpen(false)} title="Smart Tax Auditor" size="lg">
                 <div className="p-1">
                     {isAnalyzing ? (
                         <div className="text-center py-5">
                             <div className="spinner-border text-primary mb-3" role="status"></div>
-                            <h5 className="fw-900">Scanning for Deductions...</h5>
-                            <p className="text-muted small">Gemini is analyzing your transaction descriptions against IRS rules.</p>
+                            <h5 className="fw-900">Expert Auditor Thinking...</h5>
+                            <p className="text-muted small">Gemini is applying IRS Pub 463 logic to your ledger entries.</p>
                         </div>
                     ) : (
                         <div>
-                            <div className="alert alert-primary bg-primary bg-opacity-5 border-0 rounded-4 p-4 d-flex gap-3 mb-4">
-                                <Sparkles className="text-primary flex-shrink-0" size={24} />
-                                <div>
-                                    <h6 className="fw-900 text-black mb-1">Deduction Suggestions Found</h6>
-                                    <p className="small mb-0 text-muted">The AI has identified potential tax-advantaged categories for your entries.</p>
+                            <div className="alert alert-primary bg-primary bg-opacity-5 border-0 rounded-4 p-4 d-flex justify-content-between align-items-center mb-4">
+                                <div className="d-flex gap-3">
+                                    <BrainCircuit className="text-primary flex-shrink-0" size={32} />
+                                    <div>
+                                        <h6 className="fw-900 text-black mb-1">Deduction Strategy Ready</h6>
+                                        <p className="small mb-0 text-muted">We found {aiResults.length} ways to optimize your tax reporting. Review each item below.</p>
+                                    </div>
                                 </div>
+                                <button onClick={applyAllSuggestions} className="btn btn-primary px-4 fw-900 rounded-3 shadow-sm">
+                                    Apply All Sugestions
+                                </button>
                             </div>
 
-                            <div className="table-responsive">
-                                <table className="table align-middle">
-                                    <thead className="small fw-800 text-muted text-uppercase bg-light">
-                                        <tr>
-                                            <th>Transaction</th>
-                                            <th>AI Recommendation</th>
-                                            <th>Tax Strategy Reason</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {aiResults.map(res => {
-                                            const t = transactions.find(x => x.id === res.id);
-                                            return (
-                                                <tr key={res.id}>
-                                                    <td>
-                                                        <span className="fw-bold d-block">{t?.description}</span>
-                                                        <small className="text-muted">{formatCurrency(t?.amount || 0)}</small>
-                                                    </td>
-                                                    <td>
-                                                        <div className="badge bg-success bg-opacity-10 text-success border-0 px-3 py-2 rounded-pill fw-900" style={{fontSize: '0.7rem'}}>
-                                                            {res.suggestedCategory}
+                            <div className="d-flex flex-column gap-3 overflow-auto pr-2" style={{ maxHeight: '50vh' }}>
+                                {aiResults.map(res => {
+                                    const t = transactions.find(x => x.id === res.id);
+                                    const isApplied = appliedIds.has(res.id);
+                                    return (
+                                        <div key={res.id} className={`card border rounded-4 transition-all ${isApplied ? 'bg-success bg-opacity-5 opacity-75' : 'bg-white shadow-sm'}`}>
+                                            <div className="card-body p-4">
+                                                <div className="d-flex justify-content-between align-items-start mb-3">
+                                                    <div>
+                                                        <span className="fw-900 fs-5 text-dark">{t?.description}</span>
+                                                        <div className="text-muted small fw-bold mt-1">
+                                                            TRANSACTION AMOUNT: <span className="text-black">{formatCurrency(t?.amount || 0)}</span>
                                                         </div>
-                                                    </td>
-                                                    <td className="small text-muted">{res.reason}</td>
-                                                </tr>
-                                            );
-                                        })}
-                                    </tbody>
-                                </table>
+                                                    </div>
+                                                    <div className="badge bg-primary bg-opacity-10 text-primary border-0 px-3 py-2 rounded-pill fw-900" style={{fontSize: '0.65rem'}}>
+                                                        {res.advantage}
+                                                    </div>
+                                                </div>
+
+                                                <div className="bg-light p-3 rounded-3 mb-3 border border-dashed d-flex align-items-center justify-content-between">
+                                                    <div className="d-flex align-items-center gap-3">
+                                                        <div className="text-muted small fw-800 text-uppercase">Current</div>
+                                                        <div className="badge bg-white text-muted border px-2 py-1 rounded-pill">{t?.category?.name || 'Uncategorized'}</div>
+                                                        <ArrowRight size={16} className="text-muted opacity-50" />
+                                                        <div className="text-primary small fw-800 text-uppercase">AI Recommended</div>
+                                                        <div className="badge bg-primary text-white border-0 px-2 py-1 rounded-pill">{res.suggestedCategoryName}</div>
+                                                    </div>
+                                                    <div className="text-end">
+                                                        <div className="text-muted" style={{fontSize: '0.6rem', fontWeight: 800}}>AI CONFIDENCE</div>
+                                                        <div className="fw-900 text-primary">{Math.round(res.confidence * 100)}%</div>
+                                                    </div>
+                                                </div>
+
+                                                <div className="d-flex justify-content-between align-items-center">
+                                                    <div className="d-flex align-items-center gap-2 flex-grow-1">
+                                                        <Info size={14} className="text-primary flex-shrink-0" />
+                                                        <span className="small text-muted italic">"{res.reason}"</span>
+                                                    </div>
+                                                    <button 
+                                                        onClick={() => applySuggestion(res)} 
+                                                        disabled={isApplied}
+                                                        className={`btn btn-sm px-4 fw-900 rounded-3 transition-all ${isApplied ? 'btn-success text-white' : 'btn-white border shadow-sm text-primary'}`}
+                                                    >
+                                                        {isApplied ? <><Check size={14} className="me-2" /> Applied</> : 'Accept Suggestion'}
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
                             </div>
                         </div>
                     )}
