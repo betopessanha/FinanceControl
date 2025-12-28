@@ -7,7 +7,6 @@ import { PlusCircle, Search, Edit2, Loader2, Calendar, Wallet, Trash2, Save, Spa
 import Modal from './ui/Modal';
 import { useData } from '../lib/DataContext';
 import ExportMenu from './ui/ExportMenu';
-import { GoogleGenAI } from "@google/genai";
 
 const Transactions: React.FC = () => {
     const { 
@@ -89,6 +88,18 @@ const Transactions: React.FC = () => {
         if (editingTransaction) await updateLocalTransaction(obj);
         else await addLocalTransaction(obj);
         setIsFormModalOpen(false);
+    };
+
+    const handleDeleteOne = async (id: string) => {
+        if (confirm('Permanently delete this record?')) {
+            await deleteLocalTransaction(id);
+            // Also clean from selected if it's there
+            if (selectedIds.has(id)) {
+                const next = new Set(selectedIds);
+                next.delete(id);
+                setSelectedIds(next);
+            }
+        }
     };
 
     const resetFilters = () => {
@@ -312,7 +323,10 @@ const Transactions: React.FC = () => {
                                                 </span>
                                             </td>
                                             <td className="pe-4 py-4 text-center">
-                                                <button onClick={() => handleOpenModal(t)} className="btn btn-sm btn-white border-0 shadow-none"><Edit2 size={16} className="text-muted"/></button>
+                                                <div className="btn-group shadow-none">
+                                                    <button onClick={() => handleOpenModal(t)} className="btn btn-sm btn-white border-0" title="Edit"><Edit2 size={16} className="text-muted"/></button>
+                                                    <button onClick={() => handleDeleteOne(t.id)} className="btn btn-sm btn-white border-0 text-danger" title="Delete"><Trash2 size={16}/></button>
+                                                </div>
                                             </td>
                                         </tr>
                                     );
@@ -446,9 +460,16 @@ const Transactions: React.FC = () => {
                         </div>
                     )}
 
-                    <button type="submit" className="btn btn-black w-100 py-3 fw-900 rounded-3 shadow-lg mt-2">
-                        <Save size={18} className="me-2" /> Commit to Ledger
-                    </button>
+                    <div className="d-flex gap-2">
+                        {editingTransaction && (
+                            <button type="button" onClick={() => { handleDeleteOne(editingTransaction.id); setIsFormModalOpen(false); }} className="btn btn-outline-danger px-4 fw-bold rounded-3">
+                                <Trash2 size={18} />
+                            </button>
+                        )}
+                        <button type="submit" className="btn btn-black flex-grow-1 py-3 fw-900 rounded-3 shadow-lg">
+                            <Save size={18} className="me-2" /> {editingTransaction ? 'Update Ledger' : 'Commit to Ledger'}
+                        </button>
+                    </div>
                 </form>
             </Modal>
         </div>
