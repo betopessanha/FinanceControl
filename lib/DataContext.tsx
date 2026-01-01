@@ -114,7 +114,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const localFiscal = loadFromLocal(STORAGE_KEYS.FISCAL, []);
         const localLoads = loadFromLocal(STORAGE_KEYS.LOADS, []);
 
-        // Priority is cloud if connected, but we set local first for fast UI
         setBusinessEntities(localEntities);
         if (!activeEntityId && localEntities.length > 0) setActiveEntityId(localEntities[0].id);
         
@@ -146,7 +145,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
                             address: e.address, city: e.city, state: e.state, zip: e.zip
                         }));
                         setBusinessEntities(mapped); saveToLocal(STORAGE_KEYS.ENTITIES, mapped);
-                        if (!activeEntityId) setActiveEntityId(mapped[0].id);
                     }
                     if (resAccs.data?.length) {
                         const mapped = resAccs.data.map(a => ({ 
@@ -217,45 +215,67 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             reportFilter, loading, isCloudConnected: isActuallyConnected, refreshData: () => fetchData(true), pushLocalDataToCloud: async () => ({ success: true, message: "Sync complete" }),
             setReportFilter,
             addLocalEntity: async (e) => {
-                const updated = [...businessEntities, e];
-                setBusinessEntities(updated); saveToLocal(STORAGE_KEYS.ENTITIES, updated);
-                if (!activeEntityId) setActiveEntityId(e.id);
-                return syncToCloud('business_entities', e.id, { id: e.id, name: e.name, type: e.type, structure: e.structure, tax_form: e.taxForm, ein: e.ein }, 'insert');
+                setBusinessEntities(prev => {
+                    const updated = [...prev, e];
+                    saveToLocal(STORAGE_KEYS.ENTITIES, updated);
+                    return updated;
+                });
+                return syncToCloud('business_entities', e.id, { id: e.id, name: e.name, type: e.type, structure: e.structure, tax_form: e.tax_form, ein: e.ein }, 'insert');
             },
             updateLocalEntity: async (e) => {
-                const updated = businessEntities.map(x => x.id === e.id ? e : x);
-                setBusinessEntities(updated); saveToLocal(STORAGE_KEYS.ENTITIES, updated);
-                return syncToCloud('business_entities', e.id, { name: e.name, type: e.type, structure: e.structure, tax_form: e.taxForm, ein: e.ein }, 'update');
+                setBusinessEntities(prev => {
+                    const updated = prev.map(x => x.id === e.id ? e : x);
+                    saveToLocal(STORAGE_KEYS.ENTITIES, updated);
+                    return updated;
+                });
+                return syncToCloud('business_entities', e.id, { name: e.name, type: e.type, structure: e.structure, tax_form: e.tax_form, ein: e.ein }, 'update');
             },
             deleteLocalEntity: async (id) => {
-                const updated = businessEntities.filter(x => x.id !== id);
-                setBusinessEntities(updated); saveToLocal(STORAGE_KEYS.ENTITIES, updated);
-                if (activeEntityId === id && updated.length > 0) setActiveEntityId(updated[0].id);
+                setBusinessEntities(prev => {
+                    const updated = prev.filter(x => x.id !== id);
+                    saveToLocal(STORAGE_KEYS.ENTITIES, updated);
+                    return updated;
+                });
                 await syncToCloud('business_entities', id, null, 'delete');
             },
             addLocalAccount: async (a) => {
-                const updated = [...accounts, a];
-                setAccounts(updated); saveToLocal(STORAGE_KEYS.ACCOUNTS, updated);
-                return syncToCloud('bank_accounts', a.id, { id: a.id, name: a.name, type: a.type, initial_balance: a.initialBalance, business_entity_id: a.businessEntityId }, 'insert');
+                setAccounts(prev => {
+                    const updated = [...prev, a];
+                    saveToLocal(STORAGE_KEYS.ACCOUNTS, updated);
+                    return updated;
+                });
+                return syncToCloud('bank_accounts', a.id, { id: a.id, name: a.name, type: a.type, initial_balance: a.initialBalance, business_entity_id: a.business_entity_id }, 'insert');
             },
             updateLocalAccount: async (a) => {
-                const updated = accounts.map(x => x.id === a.id ? a : x);
-                setAccounts(updated); saveToLocal(STORAGE_KEYS.ACCOUNTS, updated);
-                return syncToCloud('bank_accounts', a.id, { name: a.name, type: a.type, initial_balance: a.initialBalance, business_entity_id: a.businessEntityId }, 'update');
+                setAccounts(prev => {
+                    const updated = prev.map(x => x.id === a.id ? a : x);
+                    saveToLocal(STORAGE_KEYS.ACCOUNTS, updated);
+                    return updated;
+                });
+                return syncToCloud('bank_accounts', a.id, { name: a.name, type: a.type, initial_balance: a.initialBalance, business_entity_id: a.business_entity_id }, 'update');
             },
             deleteLocalAccount: async (id) => {
-                const updated = accounts.filter(x => x.id !== id);
-                setAccounts(updated); saveToLocal(STORAGE_KEYS.ACCOUNTS, updated);
+                setAccounts(prev => {
+                    const updated = prev.filter(x => x.id !== id);
+                    saveToLocal(STORAGE_KEYS.ACCOUNTS, updated);
+                    return updated;
+                });
                 await syncToCloud('bank_accounts', id, null, 'delete');
             },
             addLocalTransaction: async (t) => {
-                const updated = [t, ...transactions];
-                setTransactions(updated); saveToLocal(STORAGE_KEYS.TRANSACTIONS, updated);
+                setTransactions(prev => {
+                    const updated = [t, ...prev];
+                    saveToLocal(STORAGE_KEYS.TRANSACTIONS, updated);
+                    return updated;
+                });
                 return syncToCloud('transactions', t.id, { id: t.id, amount: t.amount, description: t.description, date: t.date, type: t.type, category_id: t.category?.id, to_category_id: t.toCategory?.id, account_id: t.accountId, to_account_id: t.toAccountId }, 'insert');
             },
             updateLocalTransaction: async (t) => {
-                const updated = transactions.map(x => x.id === t.id ? t : x);
-                setTransactions(updated); saveToLocal(STORAGE_KEYS.TRANSACTIONS, updated);
+                setTransactions(prev => {
+                    const updated = prev.map(x => x.id === t.id ? t : x);
+                    saveToLocal(STORAGE_KEYS.TRANSACTIONS, updated);
+                    return updated;
+                });
                 return syncToCloud('transactions', t.id, { amount: t.amount, description: t.description, date: t.date, type: t.type, category_id: t.category?.id, to_category_id: t.toCategory?.id, account_id: t.accountId, to_account_id: t.toAccountId }, 'update');
             },
             deleteLocalTransaction: async (id) => {
@@ -277,57 +297,90 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 }
             },
             addLocalTruck: async (t) => {
-                const updated = [...trucks, t];
-                setTrucks(updated); saveToLocal(STORAGE_KEYS.TRUCKS, updated);
+                setTrucks(prev => {
+                    const updated = [...prev, t];
+                    saveToLocal(STORAGE_KEYS.TRUCKS, updated);
+                    return updated;
+                });
                 return syncToCloud('trucks', t.id, { id: t.id, unit_number: t.unitNumber, make: t.make, model: t.model, year: t.year }, 'insert');
             },
             updateLocalTruck: async (t) => {
-                const updated = trucks.map(x => x.id === t.id ? t : x);
-                setTrucks(updated); saveToLocal(STORAGE_KEYS.TRUCKS, updated);
+                setTrucks(prev => {
+                    const updated = prev.map(x => x.id === t.id ? t : x);
+                    saveToLocal(STORAGE_KEYS.TRUCKS, updated);
+                    return updated;
+                });
                 return syncToCloud('trucks', t.id, { unit_number: t.unitNumber, make: t.make, model: t.model, year: t.year }, 'update');
             },
             deleteLocalTruck: async (id) => {
-                const updated = trucks.filter(x => x.id !== id);
-                setTrucks(updated); saveToLocal(STORAGE_KEYS.TRUCKS, updated);
+                setTrucks(prev => {
+                    const updated = prev.filter(x => x.id !== id);
+                    saveToLocal(STORAGE_KEYS.TRUCKS, updated);
+                    return updated;
+                });
                 await syncToCloud('trucks', id, null, 'delete');
             },
             addLocalCategory: async (c) => {
-                const updated = [...categories, c];
-                setCategories(updated); saveToLocal(STORAGE_KEYS.CATEGORIES, updated);
+                setCategories(prev => {
+                    const updated = [...prev, c];
+                    saveToLocal(STORAGE_KEYS.CATEGORIES, updated);
+                    return updated;
+                });
                 return syncToCloud('categories', c.id, { id: c.id, name: c.name, type: c.type, is_tax_deductible: c.isTaxDeductible }, 'insert');
             },
             addLocalCategories: async (list) => {
-                const updated = [...categories, ...list];
-                setCategories(updated); saveToLocal(STORAGE_KEYS.CATEGORIES, updated);
+                setCategories(prev => {
+                    const updated = [...prev, ...list];
+                    saveToLocal(STORAGE_KEYS.CATEGORIES, updated);
+                    return updated;
+                });
             },
             updateLocalCategory: async (c) => {
-                const updated = categories.map(x => x.id === c.id ? c : x);
-                setCategories(updated); saveToLocal(STORAGE_KEYS.CATEGORIES, updated);
+                setCategories(prev => {
+                    const updated = prev.map(x => x.id === c.id ? c : x);
+                    saveToLocal(STORAGE_KEYS.CATEGORIES, updated);
+                    return updated;
+                });
                 return syncToCloud('categories', c.id, { name: c.name, type: c.type, is_tax_deductible: c.isTaxDeductible }, 'update');
             },
             deleteLocalCategory: async (id) => {
-                const updated = categories.filter(x => x.id !== id);
-                setCategories(updated); saveToLocal(STORAGE_KEYS.CATEGORIES, updated);
+                setCategories(prev => {
+                    const updated = prev.filter(x => x.id !== id);
+                    saveToLocal(STORAGE_KEYS.CATEGORIES, updated);
+                    return updated;
+                });
                 await syncToCloud('categories', id, null, 'delete');
             },
             updateLocalFiscalYear: async (rec) => {
-                const updated = [...fiscalYearRecords.filter(r => r.year !== rec.year), rec];
-                setFiscalYearRecords(updated); saveToLocal(STORAGE_KEYS.FISCAL, updated);
+                setFiscalYearRecords(prev => {
+                    const updated = [...prev.filter(r => r.year !== rec.year), rec];
+                    saveToLocal(STORAGE_KEYS.FISCAL, updated);
+                    return updated;
+                });
                 return true;
             },
             addLocalLoad: async (l) => {
-                const updated = [l, ...loadRecords];
-                setLoadRecords(updated); saveToLocal(STORAGE_KEYS.LOADS, updated);
+                setLoadRecords(prev => {
+                    const updated = [l, ...prev];
+                    saveToLocal(STORAGE_KEYS.LOADS, updated);
+                    return updated;
+                });
                 return await syncToCloud('loads', l.id, { id: l.id, current_location: l.currentLocation, miles_to_pickup: l.milesToPickup, pickup_location: l.pickupLocation, status: l.status }, 'insert');
             },
             updateLocalLoad: async (l) => {
-                const updated = loadRecords.map(x => x.id === l.id ? l : x);
-                setLoadRecords(updated); saveToLocal(STORAGE_KEYS.LOADS, updated);
+                setLoadRecords(prev => {
+                    const updated = prev.map(x => x.id === l.id ? l : x);
+                    saveToLocal(STORAGE_KEYS.LOADS, updated);
+                    return updated;
+                });
                 return await syncToCloud('loads', l.id, { current_location: l.currentLocation, miles_to_pickup: l.milesToPickup, status: l.status }, 'update');
             },
             deleteLocalLoad: async (id) => {
-                const updated = loadRecords.filter(x => x.id !== id);
-                setLoadRecords(updated); saveToLocal(STORAGE_KEYS.LOADS, updated);
+                setLoadRecords(prev => {
+                    const updated = prev.filter(x => x.id !== id);
+                    saveToLocal(STORAGE_KEYS.LOADS, updated);
+                    return updated;
+                });
                 await syncToCloud('loads', id, null, 'delete');
             },
             saveSystemSetting: async (k, v) => { localStorage.setItem(k, v); }
