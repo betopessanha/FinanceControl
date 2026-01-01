@@ -146,12 +146,13 @@ const Transactions: React.FC = () => {
             if (!response.text) throw new Error("AI returned an empty response.");
             return JSON.parse(response.text);
         } catch (error: any) {
-            if (error.message?.includes("Requested entity was not found") || error.message?.includes("API Key")) {
+            // Robust error handling as per guidelines
+            if (error.message?.includes("Requested entity was not found") || error.message?.includes("API_KEY")) {
                 const win = window as any;
                 if (win.aistudio) {
                     await win.aistudio.openSelectKey();
                 }
-                throw new Error("API Key session expired or missing. Please select your API Key in the host environment and try again.");
+                throw new Error("API Key session missing or expired. Please ensure process.env.API_KEY is configured in Vercel or your local environment.");
             }
             throw error;
         }
@@ -169,7 +170,7 @@ const Transactions: React.FC = () => {
         const selectedTrans = transactions.filter(t => selectedIds.has(t.id));
         const categoryList = categories.map(c => ({ id: c.id, name: c.name }));
 
-        const prompt = `Analise estas transações contábeis e sugira a melhor categoria baseada no Schedule C (USA) para empresas de transporte (trucking). 
+        const prompt = `Analise estas transações contábeis de transporte e sugira a melhor categoria baseada no Schedule C (USA). 
         Retorne um JSON array de sugestões.
         Categorias disponíveis: ${JSON.stringify(categoryList)}
         Transações para analisar: ${JSON.stringify(selectedTrans.map(t => ({ id: t.id, desc: t.description, amount: t.amount, currentCat: t.category?.name })))}`;
@@ -232,14 +233,11 @@ const Transactions: React.FC = () => {
         setIsImporting(true);
         setAiError(null);
         
-        // Dynamic status updates animation
         const statusSteps = [
             "Initializing Neural Engine...",
             "Decrypting Statement Text...",
             "Scanning for Patterns...",
-            "Identifying Entity Relationships...",
             "Validating against IRS Schedule C...",
-            "Optimizing Deductions...",
             "Formatting Output Ledger..."
         ];
         let stepIdx = 0;
@@ -248,7 +246,7 @@ const Transactions: React.FC = () => {
                 stepIdx++;
                 setAiStatusMsg(statusSteps[stepIdx]);
             }
-        }, 1100);
+        }, 1200);
         
         const categoryList = categories.map(c => ({ id: c.id, name: c.name, type: c.type }));
         const prompt = `Extract all financial transactions from this raw text (it could be a CSV or a bank statement log):
@@ -259,7 +257,7 @@ const Transactions: React.FC = () => {
         Map them to these system categories if possible: ${JSON.stringify(categoryList)}
         
         Schema rule:
-        - date: YYYY-MM-DD format (if only month/day provided, assume current year)
+        - date: YYYY-MM-DD format
         - amount: positive number
         - type: must be either "Income" or "Expense"
         - suggestedCategoryId: from the provided list
@@ -656,9 +654,14 @@ const Transactions: React.FC = () => {
                     ) : aiError ? (
                         <div className="text-center py-5">
                             <AlertCircle size={48} className="text-danger mb-3" />
-                            <h5 className="fw-900 text-danger">Connection Failed</h5>
+                            <h5 className="fw-900 text-danger">AI Action Required</h5>
                             <p className="text-muted small mb-4">{aiError}</p>
-                            <button onClick={handleAnalyzeWithAI} className="btn btn-primary px-4 fw-bold rounded-3">Try Again</button>
+                            <div className="d-flex justify-content-center gap-2">
+                                <button onClick={handleAnalyzeWithAI} className="btn btn-primary px-4 fw-bold rounded-3">Try Again</button>
+                                <button onClick={() => (window as any).aistudio?.openSelectKey()} className="btn btn-white border px-4 fw-bold rounded-3 d-flex align-items-center gap-2">
+                                    <Key size={16}/> Select Key
+                                </button>
+                            </div>
                         </div>
                     ) : (
                         <div>

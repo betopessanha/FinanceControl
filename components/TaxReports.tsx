@@ -6,7 +6,7 @@ import { formatCurrency, formatDate } from '../lib/utils';
 import { 
     Printer, FileText, Briefcase, User, Info, ShieldCheck, Download, 
     Layout, FileSearch, Building2, AlertCircle, ChevronRight, 
-    ArrowLeft, Calendar, ClipboardCheck, Percent, FileCheck, History, MapPin, Search, CheckCircle2, HelpCircle, FileStack, Sparkles, BrainCircuit, Loader2, Zap, RefreshCw
+    ArrowLeft, Calendar, ClipboardCheck, Percent, FileCheck, History, MapPin, Search, CheckCircle2, HelpCircle, FileStack, Sparkles, BrainCircuit, Loader2, Zap, RefreshCw, Key
 } from 'lucide-react';
 import { useData } from '../lib/DataContext';
 import { GoogleGenAI, Type } from "@google/genai";
@@ -43,6 +43,7 @@ const TaxReports: React.FC<{ setActivePage?: (p: any) => void }> = ({ setActiveP
     const [aiMapping, setAiMapping] = useState<Record<string, number>>({});
     const [aiRecommendation, setAiRecommendation] = useState<string | null>(null);
     const [isRecommending, setIsRecommending] = useState(false);
+    const [aiError, setAiError] = useState<string | null>(null);
 
     const activeEntity = useMemo(() => 
         businessEntities.find(e => e.id === activeEntityId) || businessEntities[0]
@@ -62,20 +63,32 @@ const TaxReports: React.FC<{ setActivePage?: (p: any) => void }> = ({ setActiveP
     }, [transactions]);
 
     const callAI = async (prompt: string, schema: any) => {
-        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-        const response = await ai.models.generateContent({
-            model: 'gemini-3-pro-preview',
-            contents: prompt,
-            config: { 
-                responseMimeType: 'application/json',
-                responseSchema: schema
+        try {
+            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+            const response = await ai.models.generateContent({
+                model: 'gemini-3-pro-preview',
+                contents: prompt,
+                config: { 
+                    responseMimeType: 'application/json',
+                    responseSchema: schema
+                }
+            });
+            return JSON.parse(response.text || '{}');
+        } catch (error: any) {
+            if (error.message?.includes("Requested entity was not found") || error.message?.includes("API_KEY")) {
+                const win = window as any;
+                if (win.aistudio) {
+                    await win.aistudio.openSelectKey();
+                }
+                throw new Error("Missing or expired API Key. Verify your environment variables on Vercel.");
             }
-        });
-        return JSON.parse(response.text || '{}');
+            throw error;
+        }
     };
 
     const handleAIAdvisor = async () => {
         setIsRecommending(true);
+        setAiError(null);
         const prompt = `Act as an expert US Tax CPA. Analyze this business profile and recommend the correct IRS Form.
         Entity Data: ${JSON.stringify(activeEntity)}
         Return JSON with "form" (1040, 1120S, 1065, or 1120) and "reasoning" (detailed professional explanation).`;
@@ -93,8 +106,8 @@ const TaxReports: React.FC<{ setActivePage?: (p: any) => void }> = ({ setActiveP
             const res = await callAI(prompt, schema);
             setAiRecommendation(res.reasoning);
             setActiveForm(res.form as MainFormControl);
-        } catch (e) {
-            console.error("AI Advisor Error:", e);
+        } catch (e: any) {
+            setAiError(e.message);
         } finally {
             setIsRecommending(false);
         }
@@ -102,14 +115,13 @@ const TaxReports: React.FC<{ setActivePage?: (p: any) => void }> = ({ setActiveP
 
     const handleAIAutoFill = async () => {
         setIsAIAnalyzing(true);
+        setAiError(null);
         setAiStep('Scanning Ledger for active entity accounts...');
         
-        // FIX: First, find all accounts belonging to the active entity
         const entityAccountIds = accounts
             .filter(acc => acc.businessEntityId === activeEntityId)
             .map(acc => acc.id);
 
-        // Filter transactions for these accounts and the selected year
         const yearTrans = transactions.filter(t => 
             new Date(t.date).getFullYear() === selectedYear &&
             (entityAccountIds.includes(t.accountId) || (t.toAccountId && entityAccountIds.includes(t.toAccountId)))
@@ -147,8 +159,8 @@ const TaxReports: React.FC<{ setActivePage?: (p: any) => void }> = ({ setActiveP
             const mapping = await callAI(prompt, schema);
             setAiMapping(mapping);
             setActiveTab('ScheduleC');
-        } catch (e) {
-            console.error("Auto-Fill Error:", e);
+        } catch (e: any) {
+            setAiError(e.message);
         } finally {
             setIsAIAnalyzing(false);
         }
@@ -178,6 +190,21 @@ const TaxReports: React.FC<{ setActivePage?: (p: any) => void }> = ({ setActiveP
                     </select>
                 </div>
             </div>
+
+            {aiError && (
+                <div className="alert alert-danger border-0 rounded-4 p-4 mb-4 d-flex justify-content-between align-items-center shadow-sm">
+                    <div className="d-flex gap-3">
+                        <AlertCircle className="text-danger" size={24} />
+                        <div>
+                            <h6 className="fw-900 mb-1">AI Error Encountered</h6>
+                            <p className="small mb-0 opacity-75">{aiError}</p>
+                        </div>
+                    </div>
+                    <button onClick={() => (window as any).aistudio?.openSelectKey()} className="btn btn-dark btn-sm rounded-pill px-4 d-flex align-items-center gap-2">
+                        <Key size={14}/> Config Key
+                    </button>
+                </div>
+            )}
 
             {aiRecommendation && (
                 <div className="alert bg-primary bg-opacity-5 border border-primary border-opacity-10 rounded-4 p-4 mb-4 animate-slide-up shadow-sm">
@@ -340,7 +367,6 @@ const TaxReports: React.FC<{ setActivePage?: (p: any) => void }> = ({ setActiveP
                                                     <div className="fw-700 text-dark">{line}</div>
                                                 </td>
                                                 <td className="text-end pe-4">
-                                                    {/* Fix: Explicitly cast amount to number to resolve 'unknown' type error */}
                                                     <span className="fw-900 text-black fs-5">{formatCurrency(amount as number)}</span>
                                                 </td>
                                             </tr>
