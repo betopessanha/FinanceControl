@@ -8,7 +8,7 @@ import {
     Sparkles, FileText, Check, AlertCircle, ArrowRight, Download, Upload, 
     FileJson, Info, ArrowUpRight, ArrowDownRight, Tag, ArrowRightLeft, 
     X, Filter, CheckSquare, Square, Trash, BrainCircuit, Zap, RefreshCw, CheckCircle2,
-    AlertTriangle, FileType, Key, FileUp, ClipboardText, Cpu, Activity, Brain
+    AlertTriangle, FileType, FileUp, ClipboardText, Cpu, Activity, Brain
 } from 'lucide-react';
 import Modal from './ui/Modal';
 import { useData } from '../lib/DataContext';
@@ -146,15 +146,8 @@ const Transactions: React.FC = () => {
             if (!response.text) throw new Error("AI returned an empty response.");
             return JSON.parse(response.text);
         } catch (error: any) {
-            // Robust error handling as per guidelines
-            if (error.message?.includes("Requested entity was not found") || error.message?.includes("API_KEY")) {
-                const win = window as any;
-                if (win.aistudio) {
-                    await win.aistudio.openSelectKey();
-                }
-                throw new Error("API Key session missing or expired. Please ensure process.env.API_KEY is configured in Vercel or your local environment.");
-            }
-            throw error;
+            console.error("AI Error:", error);
+            throw new Error("Unable to contact AI. Please check environment configuration.");
         }
     };
 
@@ -249,7 +242,7 @@ const Transactions: React.FC = () => {
         }, 1200);
         
         const categoryList = categories.map(c => ({ id: c.id, name: c.name, type: c.type }));
-        const prompt = `Extract all financial transactions from this raw text (it could be a CSV or a bank statement log):
+        const prompt = `Extract all financial transactions from this raw text:
         "${importRawText}"
         
         Act as a professional accountant for a trucking company. Map descriptions to categories like Fuel, Tolls, Freight Revenue, etc.
@@ -486,13 +479,6 @@ const Transactions: React.FC = () => {
                                         </td>
                                     </tr>
                                 ))}
-                                {filteredTransactions.length === 0 && (
-                                    <tr>
-                                        <td colSpan={7} className="text-center py-5 text-muted">
-                                            No transactions found matching your criteria.
-                                        </td>
-                                    </tr>
-                                ) }
                             </tbody>
                         </table>
                     </div>
@@ -527,11 +513,6 @@ const Transactions: React.FC = () => {
                             <h3 className="fw-900 text-black tracking-tight mb-2">Neural Engine Processing</h3>
                             <div className="status-fader text-primary fw-800 small text-uppercase ls-1 mb-5">
                                 {aiStatusMsg}
-                            </div>
-                            <div className="container" style={{maxWidth: '400px'}}>
-                                <div className="progress bg-light rounded-pill mb-3" style={{height: '6px'}}>
-                                    <div className="progress-bar bg-primary rounded-pill progress-bar-striped progress-bar-animated" style={{width: '75%'}}></div>
-                                </div>
                             </div>
                         </div>
                     ) : importStep === 'input' ? (
@@ -654,14 +635,9 @@ const Transactions: React.FC = () => {
                     ) : aiError ? (
                         <div className="text-center py-5">
                             <AlertCircle size={48} className="text-danger mb-3" />
-                            <h5 className="fw-900 text-danger">AI Action Required</h5>
+                            <h5 className="fw-900 text-danger">AI Service Unavailable</h5>
                             <p className="text-muted small mb-4">{aiError}</p>
-                            <div className="d-flex justify-content-center gap-2">
-                                <button onClick={handleAnalyzeWithAI} className="btn btn-primary px-4 fw-bold rounded-3">Try Again</button>
-                                <button onClick={() => (window as any).aistudio?.openSelectKey()} className="btn btn-white border px-4 fw-bold rounded-3 d-flex align-items-center gap-2">
-                                    <Key size={16}/> Select Key
-                                </button>
-                            </div>
+                            <button onClick={handleAnalyzeWithAI} className="btn btn-primary px-4 fw-bold rounded-3">Try Again</button>
                         </div>
                     ) : (
                         <div>
