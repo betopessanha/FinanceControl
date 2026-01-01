@@ -49,7 +49,6 @@ const TaxReports: React.FC<{ setActivePage?: (p: any) => void }> = ({ setActiveP
         businessEntities.find(e => e.id === activeEntityId) || businessEntities[0]
     , [activeEntityId, businessEntities]);
 
-    // Automatically set form based on entity structure
     useEffect(() => {
         if (activeEntity?.structure === 'S-Corp') setActiveForm('1120S');
         else if (activeEntity?.structure === 'Partnership' || activeEntity?.structure === 'LLC (Multi-Member)') setActiveForm('1065');
@@ -59,12 +58,12 @@ const TaxReports: React.FC<{ setActivePage?: (p: any) => void }> = ({ setActiveP
 
     const availableYears = useMemo(() => {
         const transYears = transactions.map(t => new Date(t.date).getFullYear());
-        const years = Array.from(new Set([...transYears, new Date().getFullYear()])).sort((a, b) => b - a);
-        return years;
+        return Array.from(new Set([...transYears, new Date().getFullYear()])).sort((a, b) => b - a);
     }, [transactions]);
 
     const callAI = async (prompt: string, schema: any) => {
         try {
+            // Internally assigning the API key from environment
             const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
             const response = await ai.models.generateContent({
                 model: 'gemini-3-pro-preview',
@@ -77,7 +76,7 @@ const TaxReports: React.FC<{ setActivePage?: (p: any) => void }> = ({ setActiveP
             return JSON.parse(response.text || '{}');
         } catch (error: any) {
             console.error("AI Error:", error);
-            throw new Error("Unable to reach AI service. Please ensure API_KEY is set in environment variables.");
+            throw new Error("AI Service currently unavailable. Ensure the Vercel environment variable 'API_KEY' is correctly set.");
         }
     };
 
@@ -111,27 +110,24 @@ const TaxReports: React.FC<{ setActivePage?: (p: any) => void }> = ({ setActiveP
     const handleAIAutoFill = async () => {
         setIsAIAnalyzing(true);
         setAiError(null);
-        setAiStep('Scanning Ledger for active entity accounts...');
+        setAiStep('Scanning Ledger...');
         
-        // CORREÇÃO: Busca IDs de contas que pertencem à empresa ativa
         const entityAccountIds = accounts
             .filter(acc => acc.businessEntityId === activeEntityId)
             .map(acc => acc.id);
 
-        // Filtra transações vinculadas a essas contas
-        const yearTrans = transactions.filter(t => {
-            const tYear = new Date(t.date).getFullYear();
-            const belongsToEntity = entityAccountIds.includes(t.accountId) || (t.toAccountId && entityAccountIds.includes(t.toAccountId));
-            return tYear === selectedYear && belongsToEntity;
-        });
+        const yearTrans = transactions.filter(t => 
+            new Date(t.date).getFullYear() === selectedYear &&
+            (entityAccountIds.includes(t.accountId) || (t.toAccountId && entityAccountIds.includes(t.toAccountId)))
+        );
 
         if (yearTrans.length === 0) {
-            setAiStep('No records found for ' + activeEntity?.name + ' in ' + selectedYear);
-            setTimeout(() => setIsAIAnalyzing(false), 3000);
+            setAiStep('Error: No transactions found for ' + selectedYear);
+            setTimeout(() => setIsAIAnalyzing(false), 2000);
             return;
         }
 
-        setAiStep(`Processing ${yearTrans.length} transactions...`);
+        setAiStep(`Processing ${yearTrans.length} entries...`);
         
         const summarizedData = yearTrans.reduce((acc: any, t) => {
             const key = t.category?.name || (t.type === TransactionType.TRANSFER ? 'Transfers' : 'Uncategorized');
@@ -140,13 +136,13 @@ const TaxReports: React.FC<{ setActivePage?: (p: any) => void }> = ({ setActiveP
             return acc;
         }, {});
 
-        setAiStep('Mapping expenses to IRS Form Lines...');
+        setAiStep('Generating IRS Line Mapping...');
         const prompt = `Act as an automated tax preparation engine.
         Map these business category totals to the specific lines of IRS Form ${activeForm === '1040' ? 'Schedule C' : 'Form ' + activeForm}.
         Year: ${selectedYear}
         Summary Data: ${JSON.stringify(summarizedData)}
         
-        Return a JSON object where keys are Line Names (e.g., "Part I, Line 1: Gross receipts or sales", "Part II, Line 10: Car and truck expenses") and values are numeric dollar amounts.`;
+        Return a JSON object where keys are Line Names and values are numeric dollar amounts.`;
 
         const schema = {
             type: Type.OBJECT,
@@ -181,7 +177,7 @@ const TaxReports: React.FC<{ setActivePage?: (p: any) => void }> = ({ setActiveP
                 <div className="d-flex gap-2">
                     <button onClick={handleAIAdvisor} disabled={isRecommending} className="btn btn-white border shadow-sm px-3 fw-bold d-flex align-items-center gap-2 rounded-3">
                         {isRecommending ? <Loader2 size={16} className="animate-spin" /> : <BrainCircuit size={18} className="text-primary" />}
-                        Form Advisor
+                        AI Form Advisor
                     </button>
                     <select className="form-select border-0 shadow-sm fw-bold rounded-3 bg-white" style={{width: '120px'}} value={selectedYear} onChange={e => setSelectedYear(Number(e.target.value))}>
                         {availableYears.map(y => <option key={y} value={y}>{y}</option>)}
@@ -190,10 +186,10 @@ const TaxReports: React.FC<{ setActivePage?: (p: any) => void }> = ({ setActiveP
             </div>
 
             {aiError && (
-                <div className="alert alert-danger border-0 rounded-4 p-4 mb-4 d-flex align-items-center shadow-sm gap-3">
+                <div className="alert alert-danger border-0 rounded-4 p-4 mb-4 d-flex align-items-center gap-3 shadow-sm">
                     <AlertCircle className="text-danger" size={24} />
                     <div>
-                        <h6 className="fw-900 mb-1">Service Unreachable</h6>
+                        <h6 className="fw-900 mb-1">Configuration Error</h6>
                         <p className="small mb-0 opacity-75">{aiError}</p>
                     </div>
                 </div>
@@ -230,10 +226,6 @@ const TaxReports: React.FC<{ setActivePage?: (p: any) => void }> = ({ setActiveP
                                     <p className="text-muted small mb-0">Standard Schedule C Reporting</p>
                                 </div>
                             </div>
-                            <div className="d-flex flex-wrap gap-2">
-                                <span className="badge bg-light text-muted border px-2 py-1" style={{fontSize: '0.6rem'}}>SCHEDULE C</span>
-                                <span className="badge bg-light text-muted border px-2 py-1" style={{fontSize: '0.6rem'}}>SCHEDULE SE</span>
-                            </div>
                         </div>
                     </div>
                 </div>
@@ -252,10 +244,6 @@ const TaxReports: React.FC<{ setActivePage?: (p: any) => void }> = ({ setActiveP
                                     <p className="text-muted small mb-0">Entity-level Filing & Pass-through</p>
                                 </div>
                             </div>
-                            <div className="d-flex flex-wrap gap-2">
-                                <span className="badge bg-light text-muted border px-2 py-1" style={{fontSize: '0.6rem'}}>SCHEDULE K-1</span>
-                                <span className="badge bg-light text-muted border px-2 py-1" style={{fontSize: '0.6rem'}}>FORM 1125-A</span>
-                            </div>
                         </div>
                     </div>
                 </div>
@@ -269,7 +257,7 @@ const TaxReports: React.FC<{ setActivePage?: (p: any) => void }> = ({ setActiveP
                         </div>
                         <div>
                             <h5 className="fw-900 mb-1">Autonomous Tax Extraction</h5>
-                            <p className="small text-white text-opacity-50 mb-0">Summarize and map all transactions from {activeEntity?.name} to IRS lines.</p>
+                            <p className="small text-white text-opacity-50 mb-0">Summarize all transactions for this entity and map to IRS lines.</p>
                         </div>
                     </div>
                     <button 
@@ -279,7 +267,7 @@ const TaxReports: React.FC<{ setActivePage?: (p: any) => void }> = ({ setActiveP
                         style={{ background: 'linear-gradient(90deg, #3b82f6, #8b5cf6)' }}
                     >
                         {isAIAnalyzing ? <Loader2 size={20} className="animate-spin" /> : <Zap size={20} />}
-                        {isAIAnalyzing ? 'SCANNING LEDGER...' : 'GENERATE & AUTO-FILL'}
+                        {isAIAnalyzing ? 'AI AUDITING...' : 'GENERATE & AUTO-FILL'}
                     </button>
                 </div>
             </div>
@@ -311,7 +299,7 @@ const TaxReports: React.FC<{ setActivePage?: (p: any) => void }> = ({ setActiveP
                                 </div>
                             </div>
                             <h4 className="fw-900 text-black tracking-tight">{aiStep}</h4>
-                            <div className="status-fader text-primary fw-800 small text-uppercase ls-1">Analyzing Accounting Records...</div>
+                            <div className="status-fader text-primary fw-800 small text-uppercase ls-1">Analyzing Accounting Engine...</div>
                         </div>
                     ) : activeTab === 'Questionnaire' ? (
                         <div className="animate-slide-up">
@@ -336,8 +324,8 @@ const TaxReports: React.FC<{ setActivePage?: (p: any) => void }> = ({ setActiveP
                         <div className="animate-slide-up">
                             <div className="d-flex justify-content-between align-items-center mb-4 border-bottom pb-4">
                                 <div>
-                                    <h5 className="fw-900 mb-1">IRS Mapping Results</h5>
-                                    <p className="text-muted small mb-0">Values derived from the Ledger for {activeEntity?.name}.</p>
+                                    <h5 className="fw-900 mb-1">Generated Form Mapping</h5>
+                                    <p className="text-muted small mb-0">Audit-ready results for Form {activeForm}.</p>
                                 </div>
                                 <div className="badge bg-success bg-opacity-10 text-success p-3 rounded-3 d-flex align-items-center gap-2">
                                     <CheckCircle2 size={18} />
@@ -349,7 +337,7 @@ const TaxReports: React.FC<{ setActivePage?: (p: any) => void }> = ({ setActiveP
                                 <table className="table align-middle mb-0">
                                     <thead className="bg-light">
                                         <tr>
-                                            <th className="ps-4 py-3 fw-800 small text-muted text-uppercase">Tax Form Line / Description</th>
+                                            <th className="ps-4 py-3 fw-800 small text-muted text-uppercase">IRS Line Description</th>
                                             <th className="py-3 text-end pe-4 fw-800 small text-muted text-uppercase">Amount ($)</th>
                                         </tr>
                                     </thead>
@@ -368,7 +356,7 @@ const TaxReports: React.FC<{ setActivePage?: (p: any) => void }> = ({ setActiveP
                                                 <td colSpan={2} className="text-center py-5">
                                                     <FileSearch className="text-muted mb-3 opacity-25" size={48} />
                                                     <h6 className="fw-bold text-muted">Ready for Analysis</h6>
-                                                    <p className="small text-muted mb-0">Click "GENERATE & AUTO-FILL" above to map your data.</p>
+                                                    <p className="small text-muted mb-4">Click "GENERATE & AUTO-FILL" to analyze your accounting data.</p>
                                                 </td>
                                             </tr>
                                         )}
@@ -379,9 +367,9 @@ const TaxReports: React.FC<{ setActivePage?: (p: any) => void }> = ({ setActiveP
                     ) : (
                         <div className="text-center py-5">
                             <FileCheck size={48} className="text-success mb-3" />
-                            <h6 className="fw-bold">Audit Package Ready</h6>
-                            <p className="text-muted small">Download the worksheet to import into standard US Tax Software.</p>
-                            <button className="btn btn-black mt-3 px-4 fw-900 rounded-3 shadow">Download XML Export</button>
+                            <h6 className="fw-bold">Ready to File</h6>
+                            <p className="text-muted small">Download the completed worksheet below to import into your tax software.</p>
+                            <button className="btn btn-black mt-3 px-4 fw-900 rounded-3">Download XML for Filing</button>
                         </div>
                     )}
                 </div>
@@ -391,11 +379,11 @@ const TaxReports: React.FC<{ setActivePage?: (p: any) => void }> = ({ setActiveP
                 <div className="d-flex align-items-center gap-3">
                     <div className="p-3 bg-primary rounded-3 text-white shadow-sm"><Printer size={20} /></div>
                     <div>
-                        <h6 className="fw-900 mb-0">Compliance Review</h6>
-                        <p className="small text-white text-opacity-50 mb-0">Download all generated forms and worksheets for filing.</p>
+                        <h6 className="fw-900 mb-0">Audit Package</h6>
+                        <p className="small text-white text-opacity-50 mb-0">Download all generated forms and audit trails in a single zip file.</p>
                     </div>
                 </div>
-                <button className="btn btn-white px-5 py-2 fw-900 rounded-3 shadow">Download Forms (.zip)</button>
+                <button className="btn btn-white px-5 py-2 fw-900 rounded-3 shadow">Download Package (.zip)</button>
             </div>
         </div>
     );
