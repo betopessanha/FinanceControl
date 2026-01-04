@@ -11,15 +11,13 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <script>
-      // Global shim for process.env to prevent ReferenceErrors in browser
-      // This allows the browser to access process.env.API_KEY safely
-      window.process = {
-        env: {
-          API_KEY: "" // Will be injected by the build system or environment
-        }
-      };
-      // If the platform injects variables into a global context, we merge them here
-      if (window.VITE_API_KEY) window.process.env.API_KEY = window.VITE_API_KEY;
+      // Global shim for process.env
+      // We check if process.env already exists (injected by bundler) 
+      // or if we need to create a placeholder for the browser.
+      window.process = window.process || { env: {} };
+      
+      // If the platform (like Vercel) provides the key via a different global, we map it.
+      // Most modern platforms inject process.env.API_KEY during build.
     </script>
     <script type="importmap">
 {
@@ -40,6 +38,7 @@
       :root {
         --brand-primary: #000000;
         --brand-accent: #3b82f6;
+        --brand-danger: #ef4444;
         --bg-ultra: #ffffff;
         --text-main: #111827;
       }
@@ -83,13 +82,23 @@
         from { opacity: 0; transform: translateY(20px); }
         to { opacity: 1; transform: translateY(0); }
       }
+
+      /* AI Health Indicators */
+      .ai-status-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        display: inline-block;
+      }
+      .ai-status-online { background-color: #10b981; box-shadow: 0 0 10px #10b981; }
+      .ai-status-offline { background-color: #ef4444; box-shadow: 0 0 10px #ef4444; }
     </style>
   </head>
   <body>
     <div id="root">
       <div class="loading-screen">
         <div class="spinner"></div>
-        <p style="margin-top: 20px; font-weight: 800; font-size: 14px; letter-spacing: 0.1em;">INITIALIZING SYSTEM</p>
+        <p style="margin-top: 20px; font-weight: 800; font-size: 12px; letter-spacing: 0.1em; color: #666;">FLEETLEDGER BOOTING...</p>
       </div>
     </div>
     <script type="module" src="./index.tsx"></script>

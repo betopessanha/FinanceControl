@@ -6,7 +6,7 @@ import { formatCurrency, formatDate, generateId } from '../lib/utils';
 import { 
     PlusCircle, Search, Edit2, Loader2, Trash2, Save, 
     Sparkles, FileText, Check, AlertCircle, ArrowRight, Upload, 
-    Info, X, CheckCircle2, Brain, FileUp, Activity
+    Info, X, CheckCircle2, Brain, FileUp, Activity, Terminal
 } from 'lucide-react';
 import Modal from './ui/Modal';
 import { useData } from '../lib/DataContext';
@@ -50,8 +50,10 @@ const Transactions: React.FC = () => {
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
     const [aiResults, setAiResults] = useState<AISuggestion[]>([]);
     const [isAnalyzing, setIsAnalyzing] = useState(false);
-    const [aiError, setAiError] = useState<string | null>(null);
+    const [aiError, setAiError] = useState<{message: string, isKeyError: boolean} | null>(null);
     const [appliedIds, setAppliedIds] = useState<Set<string>>(new Set());
+
+    const isAIConfigured = !!(process.env.API_KEY || (window as any).process?.env?.API_KEY);
 
     // Import State
     const [importStep, setImportStep] = useState<'input' | 'preview'>('input');
@@ -118,12 +120,10 @@ const Transactions: React.FC = () => {
     };
 
     const callAI = async (prompt: string, schema: any, modelName: string = 'gemini-3-flash-preview') => {
-        // Safe access to API Key
-        const apiKey = process.env.API_KEY || (window as any).process?.env?.API_KEY || (window as any).VITE_API_KEY;
+        const apiKey = process.env.API_KEY || (window as any).process?.env?.API_KEY;
         
         if (!apiKey) {
-            console.error("ENVIRONMENT ERROR: API_KEY is undefined.");
-            throw new Error("System configuration error: The AI Service Key is missing. Please check your Vercel Environment Variables.");
+            throw { message: "API_KEY not found in Vercel/Environment. Add the key and redeploy.", isKeyError: true };
         }
 
         try {
@@ -137,11 +137,15 @@ const Transactions: React.FC = () => {
                 }
             });
 
-            if (!response.text) throw new Error("Cloud analysis returned no data.");
+            if (!response.text) throw new Error("AI returned empty data.");
             return JSON.parse(response.text);
         } catch (error: any) {
-            console.error("AI Service Failure:", error);
-            throw new Error(error.message || "The AI processing engine is currently unresponsive.");
+            console.error("AI Service Error:", error);
+            const isAuthError = error.message?.includes('401') || error.message?.includes('403') || error.message?.includes('API key not valid');
+            throw { 
+                message: isAuthError ? "The provided API Key is invalid or restricted." : (error.message || "Connection to Gemini failed."), 
+                isKeyError: isAuthError 
+            };
         }
     };
 
@@ -180,7 +184,7 @@ const Transactions: React.FC = () => {
             const results = await callAI(prompt, schema);
             setAiResults(results);
         } catch (e: any) {
-            setAiError(e.message);
+            setAiError(e);
         } finally {
             setIsAnalyzing(false);
         }
@@ -228,7 +232,10 @@ const Transactions: React.FC = () => {
             setExtractedTransactions(results.map((r: any) => ({ ...r, tempId: generateId() })));
             setImportStep('preview');
         } catch (e: any) {
-            setAiError(e.message);
+            setAiError(e);
+            setImportStep('input');
+            setIsImportModalOpen(false);
+            setIsAIModalOpen(true); // Redireciona para o modal de erro unificado
         } finally {
             setIsImporting(false);
         }
@@ -278,6 +285,15 @@ const Transactions: React.FC = () => {
 
     return (
         <div className="container-fluid py-2 animate-slide-up position-relative">
+            {!isAIConfigured && (
+                <div className="alert alert-warning border-0 rounded-4 p-3 mb-4 d-flex align-items-center gap-3 shadow-sm">
+                    <AlertCircle className="text-warning" size={24} />
+                    <div className="small">
+                        <span className="fw-900">AI DEGRADED MODE:</span> No <code className="bg-dark text-white px-2 rounded">API_KEY</code> detected in Vercel Environment Variables. AI features are disabled.
+                    </div>
+                </div>
+            )}
+
             <div className="d-flex flex-column flex-md-row justify-content-between align-items-md-center mb-5 gap-3">
                 <div>
                     <h1 className="fw-900 tracking-tight text-black mb-1">USA General Ledger</h1>
@@ -364,7 +380,11 @@ const Transactions: React.FC = () => {
                 <div className="position-fixed bottom-0 start-50 translate-middle-x mb-4 animate-slide-up" style={{ zIndex: 1050 }}>
                     <div className="bg-black text-white px-4 py-3 rounded-pill shadow-lg d-flex align-items-center gap-4 border border-white border-opacity-10">
                         <span className="fw-900 small border-end border-white border-opacity-10 pe-4">{selectedIds.size} SELECTED</span>
-                        <button onClick={handleAnalyzeWithAI} className="btn btn-link text-primary p-0 fw-800 small text-decoration-none d-flex align-items-center gap-2">
+                        <button 
+                            onClick={handleAnalyzeWithAI} 
+                            disabled={!isAIConfigured}
+                            className={`btn btn-link p-0 fw-800 small text-decoration-none d-flex align-items-center gap-2 ${isAIConfigured ? 'text-primary' : 'text-muted'}`}
+                        >
                             <Brain size={18} /> AI TAX ANALYSIS
                         </button>
                         <button onClick={() => { if(confirm('Delete records?')) deleteLocalTransactions(Array.from(selectedIds)); setSelectedIds(new Set()); }} className="btn btn-link text-danger p-0 fw-800 small text-decoration-none d-flex align-items-center gap-2">
@@ -389,6 +409,18 @@ const Transactions: React.FC = () => {
                         </div>
                     ) : importStep === 'input' ? (
                         <div className="animate-slide-up">
+                            {!isAIConfigured && (
+                                <div className="alert alert-danger bg-danger bg-opacity-5 border-0 rounded-4 p-4 mb-4">
+                                    <div className="d-flex gap-3">
+                                        <AlertCircle size={24} className="text-danger" />
+                                        <div>
+                                            <h6 className="fw-900 mb-1">Configuration Error</h6>
+                                            <p className="small mb-0 opacity-75">AI Importer requires a Gemini API Key. Please add <code className="bg-danger text-white px-1">API_KEY</code> to your Vercel project environment variables.</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
                             <p className="text-muted small mb-4">Upload a bank CSV, TXT statement, or paste record logs. AI will handle the rest.</p>
                             
                             <div className="mb-4">
@@ -424,7 +456,11 @@ const Transactions: React.FC = () => {
                                 )}
                             </div>
 
-                            <button onClick={handleImportAI} disabled={(!importRawText && !fileName) || !importAccountId} className="btn btn-black w-100 py-3 fw-900 rounded-3 shadow-lg d-flex align-items-center justify-content-center gap-2">
+                            <button 
+                                onClick={handleImportAI} 
+                                disabled={(!importRawText && !fileName) || !importAccountId || !isAIConfigured} 
+                                className="btn btn-black w-100 py-3 fw-900 rounded-3 shadow-lg d-flex align-items-center justify-content-center gap-2"
+                            >
                                 <Sparkles size={18} className="text-primary" /> START AI EXTRACTION
                             </button>
                         </div>
@@ -470,7 +506,7 @@ const Transactions: React.FC = () => {
                 </div>
             </Modal>
 
-            {/* AI Auditor Modal */}
+            {/* AI Auditor Modal & Error Handler */}
             <Modal isOpen={isAIModalOpen} onClose={() => !isAnalyzing && setIsAIModalOpen(false)} title="Intelligent Tax Auditor" size="lg">
                 <div className="p-1">
                     {isAnalyzing ? (
@@ -482,10 +518,28 @@ const Transactions: React.FC = () => {
                         </div>
                     ) : aiError ? (
                         <div className="text-center py-5">
-                            <AlertCircle size={48} className="text-danger mb-3" />
-                            <h5 className="fw-900 text-danger">AI Action Required</h5>
-                            <p className="text-muted small mb-4">{aiError}</p>
-                            <button onClick={handleAnalyzeWithAI} className="btn btn-primary px-4 fw-bold rounded-3">Try Again</button>
+                            <div className="bg-danger bg-opacity-10 text-danger rounded-circle p-4 d-inline-block mb-4 shadow-sm">
+                                <AlertCircle size={64} />
+                            </div>
+                            <h5 className="fw-900 text-danger">AI Service Failure</h5>
+                            <p className="text-muted small mb-4 px-5">{aiError.message}</p>
+                            
+                            {aiError.isKeyError && (
+                                <div className="p-4 bg-light rounded-4 text-start mb-4 border shadow-sm mx-auto" style={{maxWidth: '500px'}}>
+                                    <h6 className="fw-800 small text-uppercase mb-3 d-flex align-items-center gap-2"><Terminal size={14}/> Resolution Steps</h6>
+                                    <ol className="small text-muted mb-0 ps-3">
+                                        <li>Go to your <strong>Vercel Dashboard</strong></li>
+                                        <li>Settings → Environment Variables</li>
+                                        <li>Add <code className="bg-dark text-white px-2 py-0 rounded">API_KEY</code> with your Gemini Key</li>
+                                        <li>Trigger a <strong>Redeploy</strong> of the project</li>
+                                    </ol>
+                                </div>
+                            )}
+
+                            <div className="d-flex justify-content-center gap-2">
+                                <button onClick={() => setIsAIModalOpen(false)} className="btn btn-white border px-4 fw-bold rounded-3">Cancel</button>
+                                <button onClick={handleAnalyzeWithAI} className="btn btn-black px-4 fw-bold rounded-3">Retry Request</button>
+                            </div>
                         </div>
                     ) : (
                         <div className="d-flex flex-column gap-3 overflow-auto" style={{ maxHeight: '60vh' }}>
