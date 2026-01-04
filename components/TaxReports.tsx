@@ -6,7 +6,7 @@ import { formatCurrency, formatDate } from '../lib/utils';
 import { 
     Printer, FileText, Briefcase, User, Info, ShieldCheck, Download, 
     Layout, FileSearch, Building2, AlertCircle, ChevronRight, 
-    ArrowLeft, Calendar, ClipboardCheck, Percent, FileCheck, History, MapPin, Search, CheckCircle2, HelpCircle, FileStack, Sparkles, BrainCircuit, Loader2, Zap, RefreshCw
+    ArrowLeft, Calendar, ClipboardCheck, Percent, FileCheck, History, MapPin, Search, CheckCircle2, HelpCircle, FileStack, Sparkles, BrainCircuit, Loader2, Zap, RefreshCw, Terminal
 } from 'lucide-react';
 import { useData } from '../lib/DataContext';
 import { GoogleGenAI, Type } from "@google/genai";
@@ -43,7 +43,10 @@ const TaxReports: React.FC<{ setActivePage?: (p: any) => void }> = ({ setActiveP
     const [aiMapping, setAiMapping] = useState<Record<string, number>>({});
     const [aiRecommendation, setAiRecommendation] = useState<string | null>(null);
     const [isRecommending, setIsRecommending] = useState(false);
-    const [aiError, setAiError] = useState<string | null>(null);
+    const [aiError, setAiError] = useState<{message: string, isKeyError: boolean} | null>(null);
+    const [isErrorModalOpen, setIsErrorModalOpen] = useState(false);
+
+    const isAIConfigured = !!(process.env.API_KEY || (window as any).process?.env?.API_KEY);
 
     const activeEntity = useMemo(() => 
         businessEntities.find(e => e.id === activeEntityId) || businessEntities[0]
@@ -62,9 +65,14 @@ const TaxReports: React.FC<{ setActivePage?: (p: any) => void }> = ({ setActiveP
     }, [transactions]);
 
     const callAI = async (prompt: string, schema: any) => {
+        const apiKey = process.env.API_KEY || (window as any).process?.env?.API_KEY;
+        
+        if (!apiKey) {
+            throw { message: "AI_KEY not found in System Environment. Please configure your Vercel variables.", isKeyError: true };
+        }
+
         try {
-            // Internally assigning the API key from environment
-            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+            const ai = new GoogleGenAI({ apiKey });
             const response = await ai.models.generateContent({
                 model: 'gemini-3-pro-preview',
                 contents: prompt,
@@ -76,11 +84,21 @@ const TaxReports: React.FC<{ setActivePage?: (p: any) => void }> = ({ setActiveP
             return JSON.parse(response.text || '{}');
         } catch (error: any) {
             console.error("AI Error:", error);
-            throw new Error("AI Service currently unavailable. Ensure the Vercel environment variable 'API_KEY' is correctly set.");
+            const isAuthError = error.message?.includes('401') || error.message?.includes('403') || error.message?.includes('API key not valid');
+            throw { 
+                message: isAuthError ? "The provided API Key is invalid or restricted." : (error.message || "AI Service currently unavailable."), 
+                isKeyError: isAuthError 
+            };
         }
     };
 
     const handleAIAdvisor = async () => {
+        if (!isAIConfigured) {
+            setAiError({ message: "AI Services are disabled due to missing credentials.", isKeyError: true });
+            setIsErrorModalOpen(true);
+            return;
+        }
+
         setIsRecommending(true);
         setAiError(null);
         const prompt = `Act as an expert US Tax CPA. Analyze this business profile and recommend the correct IRS Form.
@@ -101,13 +119,20 @@ const TaxReports: React.FC<{ setActivePage?: (p: any) => void }> = ({ setActiveP
             setAiRecommendation(res.reasoning);
             setActiveForm(res.form as MainFormControl);
         } catch (e: any) {
-            setAiError(e.message);
+            setAiError(e);
+            setIsErrorModalOpen(true);
         } finally {
             setIsRecommending(false);
         }
     };
 
     const handleAIAutoFill = async () => {
+        if (!isAIConfigured) {
+            setAiError({ message: "Neural auto-fill requires a valid API_KEY configuration.", isKeyError: true });
+            setIsErrorModalOpen(true);
+            return;
+        }
+
         setIsAIAnalyzing(true);
         setAiError(null);
         setAiStep('Scanning Ledger...');
@@ -154,7 +179,8 @@ const TaxReports: React.FC<{ setActivePage?: (p: any) => void }> = ({ setActiveP
             setAiMapping(mapping);
             setActiveTab('ScheduleC');
         } catch (e: any) {
-            setAiError(e.message);
+            setAiError(e);
+            setIsErrorModalOpen(true);
         } finally {
             setIsAIAnalyzing(false);
         }
@@ -162,6 +188,15 @@ const TaxReports: React.FC<{ setActivePage?: (p: any) => void }> = ({ setActiveP
 
     return (
         <div className="container-fluid py-3 animate-slide-up pb-5 mb-5">
+            {!isAIConfigured && (
+                <div className="alert alert-warning border-0 rounded-4 p-3 mb-4 d-flex align-items-center gap-3 shadow-sm">
+                    <AlertCircle className="text-warning" size={24} />
+                    <div className="small">
+                        <span className="fw-900">AI DEGRADED MODE:</span> No <code className="bg-dark text-white px-2 rounded">API_KEY</code> detected. Smart tax auditing features are limited.
+                    </div>
+                </div>
+            )}
+
             <div className="d-flex flex-column flex-md-row justify-content-between align-items-md-center mb-5 gap-3">
                 <div className="d-flex align-items-center gap-3">
                     <button onClick={() => setActivePage?.('Dashboard')} className="btn btn-white border shadow-sm p-2 rounded-3">
@@ -184,16 +219,6 @@ const TaxReports: React.FC<{ setActivePage?: (p: any) => void }> = ({ setActiveP
                     </select>
                 </div>
             </div>
-
-            {aiError && (
-                <div className="alert alert-danger border-0 rounded-4 p-4 mb-4 d-flex align-items-center gap-3 shadow-sm">
-                    <AlertCircle className="text-danger" size={24} />
-                    <div>
-                        <h6 className="fw-900 mb-1">Configuration Error</h6>
-                        <p className="small mb-0 opacity-75">{aiError}</p>
-                    </div>
-                </div>
-            )}
 
             {aiRecommendation && (
                 <div className="alert bg-primary bg-opacity-5 border border-primary border-opacity-10 rounded-4 p-4 mb-4 animate-slide-up shadow-sm">
@@ -263,7 +288,7 @@ const TaxReports: React.FC<{ setActivePage?: (p: any) => void }> = ({ setActiveP
                     <button 
                         onClick={handleAIAutoFill} 
                         disabled={isAIAnalyzing}
-                        className="btn btn-primary px-5 py-3 fw-900 rounded-pill shadow-lg d-flex align-items-center gap-2 border-0"
+                        className={`btn btn-primary px-5 py-3 fw-900 rounded-pill shadow-lg d-flex align-items-center gap-2 border-0 ${!isAIConfigured ? 'opacity-50' : ''}`}
                         style={{ background: 'linear-gradient(90deg, #3b82f6, #8b5cf6)' }}
                     >
                         {isAIAnalyzing ? <Loader2 size={20} className="animate-spin" /> : <Zap size={20} />}
@@ -375,16 +400,37 @@ const TaxReports: React.FC<{ setActivePage?: (p: any) => void }> = ({ setActiveP
                 </div>
             </Card>
 
-            <div className="card border-0 bg-dark text-white rounded-4 p-4 d-flex flex-column flex-md-row justify-content-between align-items-center gap-3 shadow-lg">
-                <div className="d-flex align-items-center gap-3">
-                    <div className="p-3 bg-primary rounded-3 text-white shadow-sm"><Printer size={20} /></div>
-                    <div>
-                        <h6 className="fw-900 mb-0">Audit Package</h6>
-                        <p className="small text-white text-opacity-50 mb-0">Download all generated forms and audit trails in a single zip file.</p>
+            {/* AI Error Recovery Modal */}
+            {/* Fix: Line 404 - Type '"md"' is not assignable to type '"xl" | "sm" | "lg"'. 
+                In Bootstrap, the default modal size is medium (no class needed), so we remove the size prop. */}
+            <Modal isOpen={isErrorModalOpen} onClose={() => setIsErrorModalOpen(false)} title="AI Core Action Required">
+                <div className="text-center py-4">
+                    <div className="bg-danger bg-opacity-10 text-danger rounded-circle p-4 d-inline-block mb-4">
+                        <AlertCircle size={48} />
+                    </div>
+                    <h5 className="fw-900 text-danger mb-2">Service Authentication Failure</h5>
+                    <p className="text-muted small mb-4 px-4">{aiError?.message}</p>
+                    
+                    {aiError?.isKeyError && (
+                        <div className="p-4 bg-light rounded-4 text-start mb-4 border shadow-sm">
+                            <h6 className="fw-800 small text-uppercase mb-3 d-flex align-items-center gap-2"><Terminal size={14}/> Recovery Guide</h6>
+                            <ol className="small text-muted mb-0 ps-3">
+                                <li>Access your <strong>Vercel Dashboard</strong>.</li>
+                                <li>Navigate to Project Settings → <strong>Environment Variables</strong>.</li>
+                                <li>Add a key named <code className="bg-dark text-white px-2 py-0 rounded">API_KEY</code> with your Gemini Pro key.</li>
+                                <li>Go to the <strong>Deployments</strong> tab and trigger a <strong>Redeploy</strong>.</li>
+                            </ol>
+                        </div>
+                    )}
+
+                    <div className="d-flex justify-content-center gap-2">
+                        <button onClick={() => setIsErrorModalOpen(false)} className="btn btn-white border px-4 fw-bold rounded-3">Close</button>
+                        <button onClick={() => window.location.reload()} className="btn btn-black px-4 fw-bold rounded-3 d-flex align-items-center gap-2">
+                            <RefreshCw size={16}/> Reboot System
+                        </button>
                     </div>
                 </div>
-                <button className="btn btn-white px-5 py-2 fw-900 rounded-3 shadow">Download Package (.zip)</button>
-            </div>
+            </Modal>
         </div>
     );
 };

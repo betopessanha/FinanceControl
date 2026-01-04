@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { TrendingUp, TrendingDown, ArrowUpRight, ArrowDownRight, ArrowRight, Plus, Calendar, Filter, Download, Loader2 } from 'lucide-react';
+import { TrendingUp, TrendingDown, ArrowUpRight, ArrowDownRight, ArrowRight, Plus, Calendar, Filter, Download, Loader2, Brain, AlertCircle, X } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { formatCurrency, formatDate, downloadCSV } from '../lib/utils';
 import { Page } from '../App';
@@ -28,14 +28,15 @@ const Dashboard: React.FC<{ setActivePage: (p: Page) => void }> = ({ setActivePa
     const { transactions } = useData();
     const [chartPeriod, setChartPeriod] = useState<Period>('1M');
     const [isMounted, setIsMounted] = useState(false);
+    const [showAiNotice, setShowAiNotice] = useState(true);
+
+    const isAIConfigured = !!(process.env.API_KEY || (window as any).process?.env?.API_KEY);
 
     useEffect(() => {
-        // Delay chart rendering slightly to ensure container size is calculated
         const timer = setTimeout(() => setIsMounted(true), 100);
         return () => clearTimeout(timer);
     }, []);
 
-    // Somatória garantindo conversão numérica estrita
     const revenue = useMemo(() => 
         transactions
             .filter(t => t.type === TransactionType.INCOME)
@@ -84,13 +85,31 @@ const Dashboard: React.FC<{ setActivePage: (p: Page) => void }> = ({ setActivePa
 
     return (
         <div className="container-fluid py-2">
+            {!isAIConfigured && showAiNotice && (
+                <div className="alert bg-black text-white border-0 rounded-4 p-4 mb-5 d-flex align-items-center justify-content-between shadow-lg animate-slide-up">
+                    <div className="d-flex align-items-center gap-4">
+                        <div className="bg-warning p-3 rounded-circle text-black ai-core-pulse">
+                            <Brain size={24} />
+                        </div>
+                        <div>
+                            <h6 className="fw-900 mb-1 d-flex align-items-center gap-2">
+                                <AlertCircle size={16} className="text-warning" /> 
+                                AI CO-PILOT IS OFFLINE
+                            </h6>
+                            <p className="small mb-0 text-white text-opacity-50">No <code className="bg-white bg-opacity-10 text-warning px-2 rounded">API_KEY</code> detected. Smart auditing and auto-tax features are currently disabled.</p>
+                        </div>
+                    </div>
+                    <button onClick={() => setShowAiNotice(false)} className="btn btn-link text-white p-0 opacity-50"><X size={20} /></button>
+                </div>
+            )}
+
             <div className="d-flex flex-column flex-md-row justify-content-between align-items-md-center mb-5 gap-3">
                 <div className="d-print-block">
                     <h1 className="fw-800 tracking-tight text-black mb-1">Financial Overview</h1>
                     <p className="text-muted mb-0">Your fleet's performance for the current period.</p>
                 </div>
                 <div className="d-flex gap-2 d-print-none">
-                    <button onClick={() => setActivePage('Transactions')} className="btn btn-primary shadow-lg d-flex align-items-center"><Plus size={18} className="me-2"/> New Entry</button>
+                    <button onClick={() => setActivePage('Transactions')} className="btn btn-primary shadow-lg d-flex align-items-center px-4 py-2 fw-bold"><Plus size={18} className="me-2"/> New Entry</button>
                 </div>
             </div>
 
