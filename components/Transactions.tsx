@@ -118,10 +118,12 @@ const Transactions: React.FC = () => {
     };
 
     const callAI = async (prompt: string, schema: any, modelName: string = 'gemini-3-flash-preview') => {
-        const apiKey = process.env.API_KEY;
+        // Safe access to API Key
+        const apiKey = process.env.API_KEY || (window as any).process?.env?.API_KEY || (window as any).VITE_API_KEY;
         
         if (!apiKey) {
-            throw new Error("API Key is missing. Ensure API_KEY is set in Vercel environment variables.");
+            console.error("ENVIRONMENT ERROR: API_KEY is undefined.");
+            throw new Error("System configuration error: The AI Service Key is missing. Please check your Vercel Environment Variables.");
         }
 
         try {
@@ -135,11 +137,11 @@ const Transactions: React.FC = () => {
                 }
             });
 
-            if (!response.text) throw new DOMException("AI returned an empty dataset.", "DataError");
+            if (!response.text) throw new Error("Cloud analysis returned no data.");
             return JSON.parse(response.text);
         } catch (error: any) {
-            console.error("AI Communication Failure:", error);
-            throw new DOMException(error.message || "Cloud processing failed.", "NetworkError");
+            console.error("AI Service Failure:", error);
+            throw new Error(error.message || "The AI processing engine is currently unresponsive.");
         }
     };
 
@@ -201,7 +203,7 @@ const Transactions: React.FC = () => {
         setAiStatusMsg("Neural Extraction in Progress...");
         
         const categoryList = categories.map(c => ({ id: c.id, name: c.name }));
-        const prompt = `Extract all accounting transactions from this raw data (Statement/CSV/Logs):
+        const prompt = `Extract all accounting transactions from this raw data:
         "${importRawText}"
         Format as JSON array with: date (YYYY-MM-DD), description, amount (numeric positive), type (Income/Expense), suggestedCategoryId (if matches list: ${JSON.stringify(categoryList)}), suggestedCategoryName.`;
 
