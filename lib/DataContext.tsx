@@ -1,4 +1,3 @@
-
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { Transaction, Category, Truck, BankAccount, TransactionType, BusinessEntity, FiscalYearRecord, LoadRecord } from '../types';
 import { mockTransactions, allCategories, trucks as mockTrucks, accounts as mockAccounts, businessEntities as mockEntities } from './mockData';
@@ -220,7 +219,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     saveToLocal(STORAGE_KEYS.ENTITIES, updated);
                     return updated;
                 });
-                return syncToCloud('business_entities', e.id, { id: e.id, name: e.name, type: e.type, structure: e.structure, tax_form: e.tax_form, ein: e.ein }, 'insert');
+                // Fix: Corrected property access from e.tax_form to e.taxForm
+                return syncToCloud('business_entities', e.id, { id: e.id, name: e.name, type: e.type, structure: e.structure, tax_form: e.taxForm, ein: e.ein }, 'insert');
             },
             updateLocalEntity: async (e) => {
                 setBusinessEntities(prev => {
@@ -228,7 +228,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     saveToLocal(STORAGE_KEYS.ENTITIES, updated);
                     return updated;
                 });
-                return syncToCloud('business_entities', e.id, { name: e.name, type: e.type, structure: e.structure, tax_form: e.tax_form, ein: e.ein }, 'update');
+                // Fix: Corrected property access from e.tax_form to e.taxForm
+                return syncToCloud('business_entities', e.id, { name: e.name, type: e.type, structure: e.structure, tax_form: e.taxForm, ein: e.ein }, 'update');
             },
             deleteLocalEntity: async (id) => {
                 setBusinessEntities(prev => {
@@ -244,7 +245,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     saveToLocal(STORAGE_KEYS.ACCOUNTS, updated);
                     return updated;
                 });
-                return syncToCloud('bank_accounts', a.id, { id: a.id, name: a.name, type: a.type, initial_balance: a.initialBalance, business_entity_id: a.business_entity_id }, 'insert');
+                // Fix: Corrected property access from a.business_entity_id to a.businessEntityId
+                return syncToCloud('bank_accounts', a.id, { id: a.id, name: a.name, type: a.type, initial_balance: a.initialBalance, business_entity_id: a.businessEntityId }, 'insert');
             },
             updateLocalAccount: async (a) => {
                 setAccounts(prev => {
@@ -252,7 +254,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     saveToLocal(STORAGE_KEYS.ACCOUNTS, updated);
                     return updated;
                 });
-                return syncToCloud('bank_accounts', a.id, { name: a.name, type: a.type, initial_balance: a.initialBalance, business_entity_id: a.business_entity_id }, 'update');
+                // Fix: Corrected property access from a.business_entity_id to a.businessEntityId
+                return syncToCloud('bank_accounts', a.id, { name: a.name, type: a.type, initial_balance: a.initialBalance, business_entity_id: a.businessEntityId }, 'update');
             },
             deleteLocalAccount: async (id) => {
                 setAccounts(prev => {
